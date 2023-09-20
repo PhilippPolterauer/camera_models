@@ -1,5 +1,5 @@
 use crate::base::{CameraMatrix, Distortion, Point2, Point3, Pose, Projection, Transform};
-use crate::geometry::*;
+
 #[derive(Debug, Clone, Copy)]
 struct Pinhole {
     fx: f64,

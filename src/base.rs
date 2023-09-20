@@ -89,7 +89,7 @@ fn intersect_ray_plane(ray: &Ray, plane: &Plane) -> Point3 {
 trait Intersectable<T> {
     type Output;
     fn intersect(&self, other: &T) -> Self::Output;
-    fn has_intersection(&self, other: &T) -> bool {
+    fn has_intersection(&self, _other: &T) -> bool {
         true
     }
 }
@@ -112,10 +112,10 @@ impl Intersectable<Plane> for Plane {
         // find closest point to origin that lines on both planes
         let n1 = self.normal.into_inner();
         let n2 = plane.normal.into_inner();
-        let linedirection = n2.cross(&n1);
+        let _linedirection = n2.cross(&n1);
         let dir: Vector3 = n2 - (n1 * n1.dot(&n2));
 
-        let line = Line {
+        let _line = Line {
             origin: plane.origin,
             direction: UVector3::new_normalize(dir),
         };
