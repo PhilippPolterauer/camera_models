@@ -1,4 +1,5 @@
-use crate::base::{CameraMatrix, Distortion, Point2, Point3, Pose, Projection, Transform, Vector3};
+use crate::base::{CameraMatrix, Distortion, Point2, Point3, Pose, Projection, Transform};
+use crate::geometry::*;
 #[derive(Debug, Clone, Copy)]
 struct Pinhole {
     fx: f64,
@@ -66,7 +67,7 @@ struct Camera<T: Projection, V: Distortion> {
 impl<T: Projection, V: Distortion> Projection for Camera<T, V> {
     fn project(&self, world_point: &Point3) -> Point2 {
         let camera_trafo: Transform = self.worldpose.into();
-        let point = camera_trafo.inverse() * world_point;
+        let point = camera_trafo.inverse() * *world_point;
         let point = self.projection.project(&point);
         self.distortion.distort(&point)
     }

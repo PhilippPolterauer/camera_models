@@ -31,4 +31,23 @@ impl Distortion for PlumbBob {
     }
 }
 
+#[cfg(test)]
+mod tests{
+    #[test]
+    fn test_plumb(){
+        use super::*;
+        use crate::base::Point2;
+        let p = PlumbBob::new(0.0, 0.0, 0.0, 0.0, 0.0);
+        let p2 = p.distort(&Point2::new(1.0, 1.0));
+        assert_eq!(p2, Point2::new(1.0, 1.0));
+    }
+    fn test_roundtrip(){
+        use super::*;
+        use crate::base::Point2;
+        let p = PlumbBob::new(0.0, 0.0, 0.0, 0.0, 0.0);
+        let p2 = p.distort(&Point2::new(1.0, 1.0));
+        let p3 = p.distort(&p2);
+        assert_eq!(p3, Point2::new(1.0, 1.0));
+    }
+}
 
