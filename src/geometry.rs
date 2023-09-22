@@ -1,4 +1,4 @@
-use crate::base::{Point3, Pose, Transform, Transformable};
+use crate::base::{Point, Pose, Transform, Transformable};
 use std::ops::Mul;
 impl Into<Transform> for Pose {
     fn into(self) -> Transform {
@@ -21,8 +21,8 @@ impl Transformable for Transform {
         }
     }
 }
-impl Transformable for Point3 {
-    fn transform(&self, transform: &Transform) -> Point3 {
+impl Transformable for Point {
+    fn transform(&self, transform: &Transform) -> Point {
         transform.rotation * self + transform.translation
     }
 }
@@ -36,11 +36,11 @@ impl<T: Transformable> Mul<T> for Transform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::base::{Rotation, Transformable, Vector3};
+    use crate::base::{Rotation, Transformable, Vector};
     #[test]
     fn test_transforming() {
         let p1 = Pose::identity();
-        let t1 = Transform::new(Rotation::identity(), Vector3::new(1.0, 0.0, 0.0));
+        let t1 = Transform::new(Rotation::identity(), Vector::new(1.0, 0.0, 0.0));
         assert_eq!(p1.transform(&t1), t1 * p1);
     }
 }

@@ -24,30 +24,25 @@ impl Distortion for PlumbBob {
         let radial = 1.0 + self.k1 * r2 + self.k2 * r4 + self.k3 * r6;
         let tangential_x = 2.0 * self.p1 * x * y + self.p2 * (r2 + 2.0 * x * x);
         let tangential_y = self.p1 * (r2 + 2.0 * y * y) + 2.0 * self.p2 * x * y;
-        Point2::new(
-            radial * x + tangential_x,
-            radial * y + tangential_y,
-        )
+        Point2::new(radial * x + tangential_x, radial * y + tangential_y)
     }
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
     #[test]
-    fn test_plumb(){
+    fn test_plumb() {
         use super::*;
         use crate::base::Point2;
         let p = PlumbBob::new(0.0, 0.0, 0.0, 0.0, 0.0);
         let p2 = p.distort(&Point2::new(1.0, 1.0));
         assert_eq!(p2, Point2::new(1.0, 1.0));
     }
-    fn test_roundtrip(){
+    fn test_roundtrip() {
         use super::*;
-        use crate::base::Point2;
         let p = PlumbBob::new(0.0, 0.0, 0.0, 0.0, 0.0);
         let p2 = p.distort(&Point2::new(1.0, 1.0));
         let p3 = p.distort(&p2);
         assert_eq!(p3, Point2::new(1.0, 1.0));
     }
 }
-

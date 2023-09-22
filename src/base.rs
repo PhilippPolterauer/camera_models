@@ -1,16 +1,16 @@
-use nalgebra::{Matrix2x3, UnitQuaternion};
-pub type Point3 = nalgebra::Point3<f64>;
+use nalgebra::{Matrix2x3, Matrix3x2, UnitQuaternion};
+pub type Point = nalgebra::Point3<f64>;
 pub type Rotation = UnitQuaternion<f64>;
-pub type Translation = Point3;
+pub type Translation = Point;
 pub type Point2 = nalgebra::Point2<f64>;
-pub type Vector3 = nalgebra::Vector3<f64>;
-pub type UVector3 = nalgebra::UnitVector3<f64>;
+pub type Vector = nalgebra::Vector3<f64>;
+pub type UVector = nalgebra::UnitVector3<f64>;
 pub type CameraMatrix = Matrix2x3<f64>;
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Pose {
     pub rotation: Rotation,
-    pub translation: Point3,
+    pub translation: Point,
 }
 impl Pose {
     pub fn new(rotation: Rotation, translation: Translation) -> Self {
@@ -22,29 +22,170 @@ impl Pose {
     pub fn identity() -> Self {
         Self {
             rotation: Rotation::identity(),
-            translation: Point3::origin(),
+            translation: Point::origin(),
         }
     }
 }
-pub struct Transform {
-    pub rotation: Rotation,
-    pub translation: Vector3,
-}
-
 pub struct Plane {
-    origin: Point3,
-    normal: UVector3,
+    normal: Vector,
+    d: f64,
+}
+impl Plane {
+    pub fn new(normal: Vector, d: f64) -> Self {
+        Self { normal, d }
+    }
+    pub fn from_origin_normal(origin: Point, normal: UVector) -> Self {
+        // P - O = n * d, where d is the distance from the origin to the plane
+        // the plane are all points where (P-O) dot n = 0
+        // so we can write the plane as ax + by + cz = d or
+        // so we can write the plane as a'x + b'y + c'z = 1
+        // (x-x0)*n.x + (y-y0)*n.y + (z-z0)*n.z = 0
+        // x*n.x + y*n.y + z*n.z = x0*n.x + y0*n.y + z0*n.z
+        // a = n.x, b = n.y, c = n.z, d = O dot n
+        let d = origin.coords.dot(&normal);
+        Self {
+            normal: normal.into_inner(),
+            d,
+        }
+    }
+    pub fn from_line_dir(line: &Line, dir: &UVector) -> Self {
+        let normal = line.direction.cross(dir);
+        Self::from_origin_normal(line.origin, UVector::new_normalize(normal))
+    }
+    pub fn from_line_point(line: &Line, point: &Point) -> Self {
+        let dir = point - line.origin;
+        let normal = line.direction.cross(&dir);
+        Self::from_origin_normal(line.origin, UVector::new_normalize(normal))
+    }
+    pub fn normal(&self) -> Vector {
+        self.normal
+    }
+    pub fn anchor(&self) -> Point {
+        Point::origin() + self.normal.normalize() * self.d
+    }
 }
 pub struct Ray {
-    origin: Point3,
-    direction: UVector3,
+    origin: Point,
+    direction: UVector,
+}
+impl Ray {
+    pub fn new(origin: Point, direction: UVector) -> Self {
+        Self { origin, direction }
+    }
+    pub fn direction(&self) -> UVector {
+        self.direction
+    }
+    pub fn origin(&self) -> Point {
+        self.origin
+    }
 }
 pub struct Line {
-    origin: Point3,
-    direction: UVector3,
+    origin: Point,
+    direction: UVector,
 }
+impl Line {
+    pub fn new(origin: Point, direction: UVector) -> Self {
+        Self { origin, direction }
+    }
+    pub fn direction(&self) -> UVector {
+        self.direction
+    }
+    pub fn origin(&self) -> Point {
+        self.origin
+    }
+}
+
+pub struct LineSegment {
+    start: Point,
+    end: Point,
+}
+impl LineSegment {
+    pub fn new(start: Point, end: Point) -> Self {
+        Self { start, end }
+    }
+    pub fn start(&self) -> Point {
+        self.start
+    }
+    pub fn end(&self) -> Point {
+        self.end
+    }
+    pub fn direction(&self) -> UVector {
+        UVector::new_normalize(self.end - self.start)
+    }
+}
+
+pub struct Transform {
+    pub rotation: Rotation,
+    pub translation: Vector,
+}
+
+pub enum Object {
+    Point(Point),
+    Line(Line),
+    Ray(Ray),
+    Plane(Plane),
+    LineSegment(LineSegment),
+}
+enum Intersection {
+    Point(Point),
+    Line(Line),
+}
+
+impl PartialEq for Plane {
+    fn eq(&self, other: &Self) -> bool {
+        self.normal / self.d == other.normal / other.d
+    }
+}
+
+impl PartialEq for Line {
+    fn eq(&self, other: &Self) -> bool {
+        // line1 equation is P(t1) = O1 + t1 * D1
+        // line2 equation is P(t2) = O2 + t2 * D2
+        // if line1 and line2 have an intersection then O1 + t1 * D1 == O2 + t2 * D2
+        // O2 - O1 == t1 * D1 - t2 * D2
+        // A * [t1, t2] = B, where A = [D1, -D2] and B = O2-O1
+
+        let a_mat =
+            Matrix3x2::from_columns(&[self.direction.into_inner(), -other.direction.into_inner()]);
+        let b = other.origin - self.origin;
+        let t = a_mat;
+        true
+    }
+}
+
+trait Container<T> {
+    fn contains(&self, obj: &T) -> bool;
+}
+
+impl Container<Point> for Plane {
+    fn contains(&self, point: &Point) -> bool {
+        self.normal().dot(&point.coords) == self.d
+    }
+}
+impl Container<Line> for Plane {
+    fn contains(&self, line: &Line) -> bool {
+        self.contains(&line.origin) && self.normal.dot(&line.direction) == 0.0
+    }
+}
+impl Container<Ray> for Plane {
+    fn contains(&self, ray: &Ray) -> bool {
+        self.contains(&ray.origin) && self.normal.dot(&ray.direction) == 0.0
+    }
+}
+impl Container<LineSegment> for Plane {
+    fn contains(&self, line_segment: &LineSegment) -> bool {
+        self.contains(&line_segment.start()) && self.contains(&line_segment.end())
+    }
+}
+
+impl Container<Plane> for Plane {
+    fn contains(&self, plane: &Plane) -> bool {
+        self == plane
+    }
+}
+
 pub trait Projection {
-    fn project(&self, point: &Point3) -> Point2;
+    fn project(&self, point: &Point) -> Point2;
 }
 
 pub trait Distortion {
@@ -56,7 +197,7 @@ pub trait Transformable {
 }
 
 impl Transform {
-    pub fn new(rotation: Rotation, translation: Vector3) -> Self {
+    pub fn new(rotation: Rotation, translation: Vector) -> Self {
         Self {
             rotation,
             translation,
@@ -65,7 +206,7 @@ impl Transform {
     pub fn identity() -> Self {
         Self {
             rotation: Rotation::identity(),
-            translation: Vector3::zeros(),
+            translation: Vector::zeros(),
         }
     }
     pub fn inverse(&self) -> Self {
@@ -79,74 +220,102 @@ impl Transform {
     }
 }
 
-fn intersect_ray_plane(ray: &Ray, plane: &Plane) -> Point3 {
-    let d = plane.normal.dot(&ray.direction);
-    let n = plane.normal.dot(&ray.origin.coords);
-    let t = (n / d) * -1.0;
-    ray.origin + ray.direction.into_inner() * t
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(test)]
+    mod tests {
+        use approx::assert_relative_eq;
 
-trait Intersectable<T> {
-    type Output;
-    fn intersect(&self, other: &T) -> Self::Output;
-    fn has_intersection(&self, _other: &T) -> bool {
-        true
-    }
-}
+        use super::*;
 
-impl Intersectable<Ray> for Plane {
-    type Output = Point3;
-    fn intersect(&self, ray: &Ray) -> Self::Output {
-        intersect_ray_plane(ray, self)
-    }
-}
-impl Intersectable<Plane> for Ray {
-    type Output = Point3;
-    fn intersect(&self, plane: &Plane) -> Self::Output {
-        intersect_ray_plane(self, plane)
-    }
-}
-impl Intersectable<Plane> for Plane {
-    type Output = Ray;
-    fn intersect(&self, plane: &Plane) -> Self::Output {
-        // find closest point to origin that lines on both planes
-        let n1 = self.normal.into_inner();
-        let n2 = plane.normal.into_inner();
-        let _linedirection = n2.cross(&n1);
-        let dir: Vector3 = n2 - (n1 * n1.dot(&n2));
+        #[test]
+        fn test_pose_new() {
+            let rotation = Rotation::from_axis_angle(&Vector::z_axis(), 0.5);
+            let translation = Translation::from(Vector::new(1.0, 2.0, 3.0));
+            let pose = Pose::new(rotation, translation);
+            assert_eq!(pose.rotation, rotation);
+            assert_eq!(pose.translation, translation);
+        }
 
-        let _line = Line {
-            origin: plane.origin,
-            direction: UVector3::new_normalize(dir),
-        };
+        #[test]
+        fn test_pose_identity() {
+            let pose = Pose::identity();
+            assert_eq!(pose.rotation, Rotation::identity());
+            assert_eq!(pose.translation, Point::origin());
+        }
 
-        Ray {
-            origin: Point3::origin(),
-            direction: UVector3::new_normalize(dir),
+        #[test]
+        fn test_plane_new() {
+            let normal = Vector::new(1.0, 0.0, 0.0);
+            let d = 1.0;
+            let plane = Plane::new(normal, d);
+            assert_eq!(plane.normal(), normal);
+            assert_eq!(plane.anchor(), Point::new(d, 0.0, 0.0));
+        }
+
+        #[test]
+        fn test_plane_from_origin_normal() {
+            let origin = Point::new(1.0, 2.0, 3.0);
+            let normal = UVector::new_normalize(Vector::new(1.0, 1.0, 1.0));
+            let plane = Plane::from_origin_normal(origin, normal);
+            assert_eq!(plane.normal(), normal.into_inner());
+            assert_relative_eq!(plane.anchor(), Point::new(2., 2.0, 2.0));
+        }
+
+        #[test]
+        fn test_plane_from_line_dir() {
+            let line = Line::new(
+                Point::new(1.0, 2.0, 3.0),
+                UVector::new_normalize(Vector::new(1.0, 0.0, 0.0)),
+            );
+            let dir = UVector::new_normalize(Vector::new(0.0, 1.0, 0.0));
+            let plane = Plane::from_line_dir(&line, &dir);
+            assert_eq!(plane.normal(), Vector::new(0.0, 0.0, 1.0));
+            assert_eq!(plane.anchor(), Point::new(0., 0., 3.0));
+        }
+
+        #[test]
+        fn test_plane_from_line_point() {
+            let line = Line::new(
+                Point::new(1.0, 2.0, 3.0),
+                UVector::new_normalize(Vector::new(1.0, 0.0, 0.0)),
+            );
+            let point = Point::new(1.0, 3.0, 3.0);
+            let plane = Plane::from_line_point(&line, &point);
+            assert_eq!(plane.normal(), Vector::new(0.0, 0.0, 1.0));
+            assert_eq!(plane.anchor(), Point::new(0.0, 0.0, 3.0));
+        }
+
+        #[test]
+        fn test_ray_new() {
+            let origin = Point::new(1.0, 2.0, 3.0);
+            let direction = UVector::new_normalize(Vector::new(1.0, 0.0, 0.0));
+            let ray = Ray::new(origin, direction);
+            assert_eq!(ray.origin(), origin);
+            assert_eq!(ray.direction(), direction);
+        }
+
+        #[test]
+        fn test_line_new() {
+            let origin = Point::new(1.0, 2.0, 3.0);
+            let direction = UVector::new_normalize(Vector::new(1.0, 0.0, 0.0));
+            let line = Line::new(origin, direction);
+            assert_eq!(line.origin(), origin);
+            assert_eq!(line.direction(), direction);
+        }
+
+        #[test]
+        fn test_line_segment_new() {
+            let start = Point::new(1.0, 2.0, 3.0);
+            let end = Point::new(4.0, 5.0, 6.0);
+            let line_segment = LineSegment::new(start, end);
+            assert_eq!(line_segment.start(), start);
+            assert_eq!(line_segment.end(), end);
+            assert_relative_eq!(
+                line_segment.direction(),
+                UVector::new_normalize(Vector::new(1.0, 1.0, 1.0))
+            );
         }
     }
-}
-
-#[cfg(test)]
-#[test]
-fn test_inverse() {
-    let t = Transform::new(
-        Rotation::from_euler_angles(0.0, 0.0, 0.0),
-        Vector3::new(1.0, 2.0, 3.0),
-    );
-    let t_inv = t.inverse();
-    let t_inv_inv = t_inv.inverse();
-    assert_eq!(t_inv_inv.rotation, t.rotation);
-    assert_eq!(t_inv_inv.translation, t.translation);
-}
-#[test]
-fn test_quaternion() {
-    let q = Rotation::from_euler_angles(0.0, 0.0, 0.0);
-    let q_inv = q.inverse();
-    let q_inv_inv = q_inv.inverse();
-    assert_eq!(q_inv_inv, q);
-    assert_eq!(
-        Rotation::identity() * Vector3::new(1.0, 2.0, 3.0),
-        Vector3::new(1.0, 2.0, 3.0)
-    )
 }
