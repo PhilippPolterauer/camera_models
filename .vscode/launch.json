@@ -1,0 +1,101 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'camera_models'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=camera_models"
+                ],
+                "filter": {
+                    "name": "camera_models",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'fractal'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=fractal",
+                    "--package=camera_models"
+                ],
+                "filter": {
+                    "name": "fractal",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'fractal'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=fractal",
+                    "--package=camera_models"
+                ],
+                "filter": {
+                    "name": "fractal",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'distort_image'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=distort_image",
+                    "--package=camera_models"
+                ],
+                "filter": {
+                    "name": "distort_image",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'distort_image'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=distort_image",
+                    "--package=camera_models"
+                ],
+                "filter": {
+                    "name": "distort_image",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

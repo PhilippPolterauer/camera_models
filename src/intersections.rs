@@ -1,7 +1,6 @@
-use crate::base::{Intersection, Line, Plane, Ray, Object};
+use crate::base::{Intersection, Line, Object, Plane, Ray};
 
-pub fn intersect(a: Object, b: Object) -> Option<Intersection> 
-{
+pub fn intersect(a: Object, b: Object) -> Option<Intersection> {
     match (a, b) {
         (Object::Line(l), Object::Plane(p)) => intersect_line_plane(&l, &p),
         (Object::Plane(p), Object::Line(l)) => intersect_line_plane(&l, &p),
@@ -48,12 +47,18 @@ fn intersect_ray_plane(ray: &Ray, plane: &Plane) -> Option<Intersection> {
     let dn = dir.dot(&pn);
 
     let don = (op - ol).dot(&pn);
-
-    match (don, dn) {
-        (0.0, 0.0) => Some(Intersection::Ray(ray.clone())),
-        (0.0, _) => Some(Intersection::Point(ol)),
-        (_, 0.0) => None,
-        (_, _) => {
+    if don == 0.0 {
+        if dn == 0.0 {
+            // ray lies in plane
+            Some(Intersection::Ray(ray.clone()))
+        } else {
+            Some(Intersection::Point(ol))
+        }
+    } else {
+        if dn == 0.0 {
+            // ray is parallel to plane
+            None
+        } else {
             let t = don / dn;
             if t > 0.0 {
                 let p = ol + dir.into_inner() * t;
@@ -64,7 +69,6 @@ fn intersect_ray_plane(ray: &Ray, plane: &Plane) -> Option<Intersection> {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -78,7 +82,7 @@ mod tests {
             UVector::new_normalize(Vector::new(1.0, 0.0, 0.0)),
         );
         let plane = Plane::new(UVector::new_normalize(Vector::new(0.0, 1.0, 0.0)), 0.0);
-        let intersection = intersect_line_plane(&line,& plane);
+        let intersection = intersect_line_plane(&line, &plane);
         assert!(matches!(intersection, Some(Intersection::Line(_line))));
 
         let line = Line::new(
@@ -87,8 +91,7 @@ mod tests {
         );
         let plane = Plane::new(UVector::new_normalize(Vector::new(0.0, 1.0, 0.0)), 0.0);
         let intersection = intersect_line_plane(&line, &plane);
-        let o = line.origin();
-        assert!(matches!(intersection, Some(Intersection::Point(o))));
+        assert!(matches!(intersection, Some(Intersection::Point(_))));
     }
 
     #[test]
@@ -103,9 +106,12 @@ mod tests {
             Some(Intersection::Point(point)) => {
                 assert_eq!(point, Point::new(0.0, 0.0, 0.0));
             }
-            other => panic!("Expected ray-plane intersection as a Point at origin, got other {:?}", other),
+            other => panic!(
+                "Expected ray-plane intersection as a Point at origin, got other {:?}",
+                other
+            ),
         }
-        // ray with 
+        // ray with
         let ray = Ray::new(
             Point::new(0.0, 0.0, 0.0),
             UVector::new_normalize(Vector::new(1.0, 1.0, 0.0)),

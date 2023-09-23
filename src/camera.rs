@@ -1,12 +1,41 @@
-use crate::base::{CameraMatrix, Point, Point2, Pose, Transform, Projection, Distortion};
+use crate::base::{CameraMatrix, CameraRay, Pose};
+use crate::distortion::CameraDistortion;
+use crate::projection::CameraProjection;
+
+pub struct CameraModel<T, V>
+where
+    T: CameraProjection,
+    V: CameraDistortion,
+{
+    projection: T,
+    distortion: V,
+}
+impl<T, V> CameraModel<T, V>
+where
+    T: CameraProjection,
+    V: CameraDistortion,
+{
+    pub fn new(projection: T, distortion: V) -> Self {
+        Self {
+            projection,
+            distortion,
+        }
+    }
+    pub fn distortion(&self) -> &V {
+        &self.distortion
+    }
+    pub fn projection(&self) -> &T {
+        &self.projection
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
-struct Pinhole {
-    fx: f64,
-    fy: f64,
-    cx: f64,
-    cy: f64,
-    skew: f64,
+pub struct Pinhole {
+    pub fx: f64,
+    pub fy: f64,
+    pub cx: f64,
+    pub cy: f64,
+    pub skew: f64,
 }
 
 impl Default for Pinhole {
@@ -16,7 +45,7 @@ impl Default for Pinhole {
 }
 
 impl Pinhole {
-    fn new(fx: f64, fy: f64, cx: f64, cy: f64, skew: f64) -> Self {
+    pub fn new(fx: f64, fy: f64, cx: f64, cy: f64, skew: f64) -> Self {
         Self {
             fx,
             fy,
@@ -25,7 +54,7 @@ impl Pinhole {
             skew,
         }
     }
-    fn from_resolution_fov(resolution: (u32, u32), fov: (f64, f64)) -> Self {
+    pub fn from_resolution_fov(resolution: (u32, u32), fov: (f64, f64)) -> Self {
         let (width, height) = resolution;
         let (fov_x, fov_y) = fov;
         let fx = width as f64 / (2.0 * (fov_x / 2.0).tan());
@@ -33,16 +62,6 @@ impl Pinhole {
         let cx = width as f64 / 2.0;
         let cy = height as f64 / 2.0;
         Self::new(fx, fy, cx, cy, 0.0)
-    }
-}
-
-impl Projection for Pinhole {
-    fn project(&self, point: &Point) -> Point2 {
-        let Point2 { coords } = Point2::from_homogeneous(point.coords).unwrap();
-        let (x, y) = (coords.x, coords.y);
-        let x = self.fx * x + self.skew * y + self.cx;
-        let y = self.fy * y + self.cy;
-        Point2::new(x, y)
     }
 }
 
@@ -58,27 +77,27 @@ impl Into<CameraMatrix> for Pinhole {
     }
 }
 
-struct Camera<T: Projection, V: Distortion> {
-    projection: T,
-    distortion: V,
+pub struct Camera<T, V>
+where
+    T: CameraProjection,
+    V: CameraDistortion,
+{
+    model: CameraModel<T, V>,
     worldpose: Pose,
 }
-
-impl<T: Projection, V: Distortion> Projection for Camera<T, V> {
-    fn project(&self, world_point: &Point) -> Point2 {
-        let camera_trafo: Transform = self.worldpose.into();
-        let point = camera_trafo.inverse() * *world_point;
-        let point = self.projection.project(&point);
-        self.distortion.distort(&point)
+impl<T, V> Camera<T, V>
+where
+    T: CameraProjection,
+    V: CameraDistortion,
+{
+    pub fn new(model: CameraModel<T, V>, worldpose: Pose) -> Self {
+        Self { model, worldpose }
+    }
+    pub fn pose(&self) -> &Pose {
+        &self.worldpose
+    }
+    pub fn model(&self) -> &CameraModel<T, V> {
+        &self.model
     }
 }
 
-struct Fisheye {
-    k1: f64,
-    k2: f64,
-    k3: f64,
-    k4: f64,
-}
-// impl Projection for Fisheye {
-//     fn project()
-// }

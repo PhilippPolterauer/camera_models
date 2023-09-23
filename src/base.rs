@@ -1,28 +1,93 @@
-use nalgebra::{Matrix2x3, UnitQuaternion};
+use nalgebra::{Matrix2x3, UnitQuaternion, Vector2};
+use std::convert::From;
 pub type Point = nalgebra::Point3<f64>;
 pub type Rotation = UnitQuaternion<f64>;
-pub type Translation = Point;
 pub type Point2 = nalgebra::Point2<f64>;
 pub type Vector = nalgebra::Vector3<f64>;
 pub type UVector = nalgebra::UnitVector3<f64>;
 pub type CameraMatrix = Matrix2x3<f64>;
+pub type ImagePoint<T> = nalgebra::Point2<T>;
+pub struct ImageIndex<T>(pub T, pub T);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CameraRay {
+    ray: Vector2<f64>,
+}
+impl CameraRay {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self {
+            ray: Vector2::new(x, y),
+        }
+    }
+    pub fn x(&self) -> f64 {
+        self.ray.x
+    }
+    pub fn y(&self) -> f64 {
+        self.ray.y
+    }
+    pub fn xy(&self) -> (f64, f64) {
+        (self.x(), self.y())
+    }
+
+}
+
+impl TryFrom<&Point> for CameraRay {
+    type Error = &'static str;
+    fn try_from(point: &Point) -> Result<Self, Self::Error> {
+        if point.z <= 0.0 {
+            Result::Err("Point must be in front of camera")
+        } else {
+            Result::Ok(Self {
+                ray: Vector2::new(point.x / point.z, point.y / point.z),
+            })
+        }
+    }
+}
+impl TryFrom<Point> for CameraRay {
+    type Error = &'static str;
+    fn try_from(point: Point) -> Result<Self, Self::Error> {
+        Self::try_from(&point)
+    }
+}
+
+impl<T: Into<f64>> From<ImageIndex<T>> for Point2 {
+    fn from(ImageIndex(x, y): ImageIndex<T>) -> Self {
+        Self::new(x.into() as f64, y.into() as f64)
+    }
+}
+impl From<Point2> for ImageIndex<u32> {
+    fn from(point: Point2) -> Self {
+        Self(point.x as u32, point.y as u32)
+    }
+}
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Pose {
     pub rotation: Rotation,
-    pub translation: Point,
+    pub origin: Point,
 }
 impl Pose {
-    pub fn new(rotation: Rotation, translation: Translation) -> Self {
-        Self {
-            rotation,
-            translation,
-        }
+    pub fn new(rotation: Rotation, origin: Point) -> Self {
+        Self { rotation, origin }
     }
+
     pub fn identity() -> Self {
         Self {
             rotation: Rotation::identity(),
-            translation: Point::origin(),
+            origin: Point::origin(),
+        }
+    }
+
+    pub fn transform_into(&self, point: &Point) -> Point {
+        Transform::from(*self).apply(point)
+    }
+}
+// conversions
+impl From<Pose> for Transform {
+    fn from(pose: Pose) -> Self {
+        Self {
+            rotation: pose.rotation,
+            translation: pose.origin.coords,
         }
     }
 }
@@ -149,7 +214,7 @@ impl PartialEq for Line {
         let o1 = self.origin();
         let o2 = other.origin();
 
-        return d1 == d2 && (o2 - o1).cross(&d1).norm() == 0.0;
+        d1 == d2 && (o2 - o1).cross(&d1).norm() == 0.0
     }
 
     fn ne(&self, other: &Self) -> bool {
@@ -188,14 +253,6 @@ impl Container<Plane> for Plane {
     }
 }
 
-pub trait Projection {
-    fn project(&self, point: &Point) -> Point2;
-}
-
-pub trait Distortion {
-    fn distort(&self, point: &Point2) -> Point2;
-}
-
 pub trait Transformable {
     fn transform(&self, transform: &Transform) -> Self;
 }
@@ -222,9 +279,11 @@ impl Transform {
     pub fn apply<T: Transformable>(&self, obj: &T) -> T {
         obj.transform(self)
     }
+    pub fn unapply<T: Transformable>(&self, obj: &T) -> T {
+        obj.transform(&self.inverse())
+    }
 }
 
-use super::*;
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
@@ -234,17 +293,17 @@ mod tests {
     #[test]
     fn test_pose_new() {
         let rotation = Rotation::from_axis_angle(&Vector::z_axis(), 0.5);
-        let translation = Translation::from(Vector::new(1.0, 2.0, 3.0));
+        let translation = Point::new(1.0, 2.0, 3.0);
         let pose = Pose::new(rotation, translation);
         assert_eq!(pose.rotation, rotation);
-        assert_eq!(pose.translation, translation);
+        assert_eq!(pose.origin, translation);
     }
 
     #[test]
     fn test_pose_identity() {
         let pose = Pose::identity();
         assert_eq!(pose.rotation, Rotation::identity());
-        assert_eq!(pose.translation, Point::origin());
+        assert_eq!(pose.origin, Point::origin());
     }
 
     #[test]

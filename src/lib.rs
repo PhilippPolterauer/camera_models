@@ -1,8 +1,14 @@
 mod base;
 mod camera;
-mod geometry;
 mod distortion;
+mod transforms;
 mod intersections;
+mod projection;
 
+pub use base::{
+    CameraRay, ImageIndex, ImagePoint, Line, Plane, Point, Point2, Ray, UVector, Vector,
+};
+pub use camera::{Camera, CameraModel, Pinhole};
+pub use distortion::{CameraDistortion, Ideal, PlumbBob, Fisheye};
 pub use intersections::intersect;
-pub use base::{Point, Vector, UVector, Line, Plane, Ray};
+pub use projection::{Projection,CameraProjection};
