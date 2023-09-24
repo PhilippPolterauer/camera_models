@@ -4,7 +4,7 @@ use crate::projection::CameraProjection;
 
 pub struct CameraModel<T, V>
 where
-    T: CameraProjection,
+    T: CameraProjection<f64>,
     V: CameraDistortion,
 {
     projection: T,
@@ -12,7 +12,7 @@ where
 }
 impl<T, V> CameraModel<T, V>
 where
-    T: CameraProjection,
+    T: CameraProjection<f64>,
     V: CameraDistortion,
 {
     pub fn new(projection: T, distortion: V) -> Self {
@@ -79,7 +79,7 @@ impl Into<CameraMatrix> for Pinhole {
 
 pub struct Camera<T, V>
 where
-    T: CameraProjection,
+    T: CameraProjection<f64>,
     V: CameraDistortion,
 {
     model: CameraModel<T, V>,
@@ -87,7 +87,7 @@ where
 }
 impl<T, V> Camera<T, V>
 where
-    T: CameraProjection,
+    T: CameraProjection<f64>,
     V: CameraDistortion,
 {
     pub fn new(model: CameraModel<T, V>, worldpose: Pose) -> Self {

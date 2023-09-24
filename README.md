@@ -14,4 +14,5 @@ Implement each of the following models
 ## Renderer
 - [ ] Frame rendering 
 
-## 
+## References
+- http://16385.courses.cs.cmu.edu/spring2022content/lectures/09_cameras/09_cameras_slides.pdf

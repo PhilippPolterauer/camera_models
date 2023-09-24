@@ -6,7 +6,7 @@ mod intersections;
 mod projection;
 
 pub use base::{
-    CameraRay, ImageIndex, ImagePoint, Line, Plane, Point, Point2, Ray, UVector, Vector,
+    CameraRay, PixelIndex, ImagePoint, Line, Plane, Point, Point2, Ray, UVector, Vector,
 };
 pub use camera::{Camera, CameraModel, Pinhole};
 pub use distortion::{CameraDistortion, Ideal, PlumbBob, Fisheye};

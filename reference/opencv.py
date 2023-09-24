@@ -101,7 +101,7 @@ def calibrate_dataset(path, num_corners_x, num_corners_y, wait_time=100):
     return mtx, dist
 
 
-# calibrate_dataset("datasets/matlab/calib_doc/htmls/calib_example/*.tif", 13, 12)
+calibrate_dataset("datasets/caltech/calib_doc/htmls/calib_example/*.tif", 13, 12)
 
 
 mtx, dist = calibrate_dataset("datasets/smatt/Left_bmp/*.bmp", 12, 12, 1)

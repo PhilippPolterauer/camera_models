@@ -7,7 +7,7 @@ pub type Vector = nalgebra::Vector3<f64>;
 pub type UVector = nalgebra::UnitVector3<f64>;
 pub type CameraMatrix = Matrix2x3<f64>;
 pub type ImagePoint<T> = nalgebra::Point2<T>;
-pub struct ImageIndex<T>(pub T, pub T);
+pub struct PixelIndex<T>(pub T, pub T);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CameraRay {
@@ -50,16 +50,17 @@ impl TryFrom<Point> for CameraRay {
     }
 }
 
-impl<T: Into<f64>> From<ImageIndex<T>> for Point2 {
-    fn from(ImageIndex(x, y): ImageIndex<T>) -> Self {
+impl<T: Into<f64>> From<PixelIndex<T>> for Point2 {
+    fn from(PixelIndex(x, y): PixelIndex<T>) -> Self {
         Self::new(x.into() as f64, y.into() as f64)
     }
 }
-impl From<Point2> for ImageIndex<u32> {
+impl From<Point2> for PixelIndex<u32> {
     fn from(point: Point2) -> Self {
         Self(point.x as u32, point.y as u32)
     }
 }
+
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Pose {
