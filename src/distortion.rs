@@ -1,4 +1,5 @@
 use crate::base::CameraRay;
+use serde::Deserialize;
 
 pub trait CameraDistortion {
     fn distort(&self, ray: &CameraRay) -> CameraRay;
@@ -13,6 +14,7 @@ impl CameraDistortion for Ideal {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub struct PlumbBob {
     k1: f64,
     k2: f64,
@@ -20,7 +22,7 @@ pub struct PlumbBob {
     p2: f64,
     k3: f64,
 }
-
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub struct Fisheye {
     pub k1: f64,
     pub k2: f64,

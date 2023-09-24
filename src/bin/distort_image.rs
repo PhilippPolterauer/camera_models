@@ -1,5 +1,8 @@
-use camera_models::{CameraDistortion, Fisheye, ImageIndex, Pinhole, PlumbBob, CameraProjection};
-use image::{GenericImageView, ImageBuffer, ImageDecoder, Rgb, RgbImage};
+use camera_models::*;
+use image::{RgbImage};
+extern crate toml;
+use serde::Deserialize;
+use std::time::{Instant};
 // load image
 
 // fn interpolate_pixel(px1 ,) -> Rgb<u8> {
@@ -42,13 +45,34 @@ fn set_nearest_pixel(img: &mut RgbImage, x: f64, y: f64, src: &RgbImage) {
     }
 }
 
+
+use std::fs::File;
+use std::io::Read;
+
+#[derive(Debug, Deserialize)]
+struct AppConfig {
+    distortion: PlumbBob,
+}
+
+fn load_config() -> Result<AppConfig, toml::de::Error> {
+    let mut file = File::open("config.toml").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+
+    toml::from_str(&contents)
+}
+
 fn main() {
-    let img = image::open("test.jpg").unwrap();
+    let conf = load_config().unwrap();
+    let img = image::open("tests/test.jpg").unwrap();
     let img = img.to_rgb8();
     let mut res = RgbImage::new(img.width(), img.height());
 
-    let distortion = PlumbBob::new(0.0001, 0.0001, 0.0, 0.00001, 0.0);
+    let distortion = conf.distortion;
     let ideal = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
+
+    let start_time = Instant::now();
+    println!("Starting Image Conversion");
     for (u, v, px) in res.enumerate_pixels_mut() {
         // compute the distorted location
 
@@ -60,21 +84,24 @@ fn main() {
         // y = (v - cy )/fy
         // x = (u - cx - s*y)/fx
 
-        print!("u, v = {}, {}\n", u, v);
+        // print!("u, v = {}, {}\n", u, v);
         // the problem is that we need to send in x' and y' from https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#ga7dfb72c9cf9780a347fbe3d1c47e5d5a
 
         let ray = ideal.unproject(&ImageIndex(u, v).into());
         let pd = distortion.distort(&ray);
         let uv = ideal.project(&pd);
-        print!("pd = {:?}\n", pd);
+        // print!("pd = {:?}\n", pd);
 
         let ImageIndex(u, v):ImageIndex<u32> = uv.into();
         // clamp to image size
-        print!("u, v = {}, {}\n", u, v);
+        // print!("u, v = {}, {}\n", u, v);
         if u < img.width() && v < img.height() {
-            *px = img.get_pixel(u, v).clone();
+            *px = *img.get_pixel(u, v);
         }
     }
+    let end_time = Instant::now();
+    let elapsed = end_time - start_time;
+    println!("Elapsed: {:?}", elapsed);
 
-    res.save("distorted.jpg").unwrap();
+    res.save("results/distorted.jpg").unwrap();
 }
