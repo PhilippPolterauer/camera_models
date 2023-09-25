@@ -1,4 +1,4 @@
-use nalgebra::{Matrix2x3, UnitQuaternion, Vector2};
+use nalgebra::{Matrix2x3, RealField, UnitQuaternion, Vector2};
 use std::convert::From;
 pub type Point = nalgebra::Point3<f64>;
 pub type Rotation = UnitQuaternion<f64>;
@@ -8,6 +8,19 @@ pub type UVector = nalgebra::UnitVector3<f64>;
 pub type CameraMatrix = Matrix2x3<f64>;
 pub type ImagePoint<T> = nalgebra::Point2<T>;
 pub struct PixelIndex<T>(pub T, pub T);
+
+impl PixelIndex<f64> {
+    pub fn x(&self) -> &f64 {
+        &self.0
+    }
+    pub fn y(&self) -> &f64 {
+        &self.1
+    }
+
+    pub fn nearest(self) -> PixelIndex<u32> {
+        PixelIndex(*self.x() as u32, *self.y() as u32)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CameraRay {
@@ -28,7 +41,6 @@ impl CameraRay {
     pub fn xy(&self) -> (f64, f64) {
         (self.x(), self.y())
     }
-
 }
 
 impl TryFrom<&Point> for CameraRay {
@@ -60,7 +72,6 @@ impl From<Point2> for PixelIndex<u32> {
         Self(point.x as u32, point.y as u32)
     }
 }
-
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct Pose {

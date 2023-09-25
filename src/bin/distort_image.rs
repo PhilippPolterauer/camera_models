@@ -1,9 +1,11 @@
 use camera_models::*;
-use image::{RgbImage, GenericImage};
+use image::{GenericImage, ImageBuffer, Pixel, Rgb, RgbImage};
 use itertools::{izip, Itertools};
 use serde::Deserialize;
 use std::array;
 use std::iter::zip;
+use std::mem::size_of;
+use std::ops::Deref;
 use std::time::Instant;
 use toml;
 // load image
@@ -64,63 +66,55 @@ fn load_config() -> Result<AppConfig, toml::de::Error> {
     toml::from_str(&contents)
 }
 
-fn main() {
-    let conf = load_config().unwrap();
-    let img = image::open("tests/test.jpg").unwrap();
-    let img = img.to_rgb8();
-    let mut res = RgbImage::new(img.width(), img.height());
-    let mut res2 = RgbImage::new(img.width(), img.height());
+fn get_distorted_pixel_idx(
+    PixelIndex(u, v): PixelIndex<u32>,
+    camera: &CameraModel<Pinhole, PlumbBob>,
+    desired: &Pinhole,
+) -> PixelIndex<f64> {
+    let ray = desired.unproject(&PixelIndex(u as f64, v as f64));
+    // we compute the undistorted image by answering the question "where would our ideal ray have landed if we would have used the distortion?"
+    // then we use this value to find the color value of the current pixel
 
-    let distortion = conf.distortion;
-    let projection = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
-    let desired = Pinhole::from_resolution_fov((img.width(), img.height()), (80., 80.));
-    let camera = CameraModel::new(projection, distortion);
+    // we project the distorted ray into the image and crop it to the image size
+    camera.project(&ray)
+    // print!("pd = {:?}\n", pd);
+}
 
-    // precompute undistort
+fn compute_undistortion_map(
+    resolution: (u32, u32),
+    camera: &CameraModel<Pinhole, PlumbBob>,
+    desired: &Pinhole,
+) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
+    let (width, height) = resolution;
+    let sz = width as usize * height as usize;
+    let mut uvec: Vec<u32> = Vec::with_capacity(sz);
+    let mut vvec: Vec<u32> = Vec::with_capacity(sz);
+    let mut udvec: Vec<u32> = Vec::with_capacity(sz);
+    let mut vdvec: Vec<u32> = Vec::with_capacity(sz);
 
-    fn get_distorted_pixel_idx(
-        PixelIndex(u, v): PixelIndex<u32>,
-        camera: &CameraModel<Pinhole, PlumbBob>,
-        desired: &Pinhole,
-    ) -> PixelIndex<u32> {
-        let ray = desired.unproject(&PixelIndex(u as f64, v as f64));
-        // we compute the undistorted image by answering the question "where would our ideal ray have landed if we would have used the distortion?"
-
-        // we project the distorted ray into the image and crop it to the image size
-        let uv = camera.project(&ray);
-        // print!("pd = {:?}\n", pd);
-
-        // version A
-        PixelIndex(uv.0.round() as u32, uv.1.round() as u32)
-    }
-
-    fn compute_undistortion_map(
-        resolution: (u32, u32),
-        camera: &CameraModel<Pinhole, PlumbBob>,
-        desired: &Pinhole,
-    ) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<bool>) {
-        let (width, height) = resolution;
-        let sz = width as usize * height as usize;
-        let mut uvec: Vec<u32> = Vec::with_capacity(sz);
-        let mut vvec: Vec<u32> = Vec::with_capacity(sz);
-        let mut udvec: Vec<u32> = Vec::with_capacity(sz);
-        let mut vdvec: Vec<u32> = Vec::with_capacity(sz);
-        let mut valids: Vec<bool> = Vec::with_capacity(sz);
-
-        for (u, v) in (0..width).cartesian_product(0..height) {
-            uvec.push(u);
-            vvec.push(v);
-            let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(u, v), camera, desired);
-            let valid = u < width && v < height;
-            udvec.push(u);
-            vdvec.push(v);
-            valids.push(valid);
+    for (vo, uo) in (0..height).cartesian_product(0..width) {
+        let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(uo, vo), camera, desired);
+        let u = u.round();
+        let v = v.round();
+        if 0. <= u && u < width as f64 && 0. <= v && v < height as f64 {
+            // version A
+            uvec.push(uo);
+            vvec.push(vo);
+            udvec.push(u as u32);
+            vdvec.push(v as u32);
         }
-        (uvec, vvec, udvec, vdvec, valids)
     }
+    (uvec, vvec, udvec, vdvec)
+}
 
-    println!("Starting Image Conversion");
-    let start_time = Instant::now();
+fn undisort_forloop(
+    img: &RgbImage,
+    camera: &CameraModel<Pinhole, PlumbBob>,
+    desired: &Pinhole,
+) -> RgbImage {
+    let mut res = RgbImage::new(img.width(), img.height());
+    let num_channel = Rgb::<u8>::CHANNEL_COUNT;
+    print!("size = {}\n", (res.as_raw()).len());
     for (u, v, px) in res.enumerate_pixels_mut() {
         // compute the distorted location
 
@@ -138,31 +132,175 @@ fn main() {
         let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(u, v), &camera, &desired);
         // clamp to image size
         // print!("u, v = {}, {}\n", u, v);
-        if 0 < u && u < img.width() && 0 < v && v < img.height() {
-            *px = *img.get_pixel(u, v);
+        let x = u.round() as u32;
+        let y = v.round() as u32;
+        if 0 < x && x < img.width() && 0 < y && y < img.height() {
+            *px = *img.get_pixel(x, y);
         }
     }
-    let end_time = Instant::now();
-    let elapsed = end_time - start_time;
-    println!("Elapsed: {:?}", elapsed);
+    res
+}
+
+#[inline]
+fn linear_index<P: Pixel, C: Deref<Target = [P::Subpixel]>>(
+    x: u32,
+    y: u32,
+    img: &ImageBuffer<P, C>,
+) -> usize {
+    let width = img.width();
+    (y * width + x) as usize
+}
+
+#[inline]
+fn byte_index<P: Pixel, C: Deref<Target = [P::Subpixel]>>(
+    x: u32,
+    y: u32,
+    img: &ImageBuffer<P, C>,
+) -> usize {
+    let width = img.width();
+    let num_channel = P::CHANNEL_COUNT;
+    ((y * width + x) * num_channel as u32) as usize
+}
+
+fn compute_undistortion_map_linidx(
+    img: &RgbImage,
+    camera: &CameraModel<Pinhole, PlumbBob>,
+    desired: &Pinhole,
+) -> (Vec<usize>, Vec<usize>) {
+    let (width, height) = img.dimensions();
+    let sz = width as usize * height as usize;
+    let mut linidx: Vec<usize> = Vec::with_capacity(sz);
+    let mut linidx_dist: Vec<usize> = Vec::with_capacity(sz);
+
+    for (vo, uo) in (0..height).cartesian_product(0..width) {
+        let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(uo, vo), camera, desired);
+        let u = u.round();
+        let v = v.round();
+        if 0. <= u && u < width as f64 && 0. <= v && v < height as f64 {
+            // version A
+
+            linidx.push(linear_index(uo as u32, vo as u32, img));
+            linidx_dist.push(linear_index(u as u32, v as u32, img))
+        }
+    }
+    (linidx, linidx_dist)
+}
+
+fn compute_undistortion_map_byteidx(
+    img: &RgbImage,
+    camera: &CameraModel<Pinhole, PlumbBob>,
+    desired: &Pinhole,
+) -> (Vec<usize>, Vec<usize>) {
+    let (width, height) = img.dimensions();
+    let sz = width as usize * height as usize;
+    let mut linidx: Vec<usize> = Vec::with_capacity(sz);
+    let mut linidx_dist: Vec<usize> = Vec::with_capacity(sz);
+
+    for (vo, uo) in (0..height).cartesian_product(0..width) {
+        let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(uo, vo), camera, desired);
+        let u = u.round();
+        let v = v.round();
+        if 0. <= u && u < width as f64 && 0. <= v && v < height as f64 {
+            // version A
+
+            linidx.push(byte_index(uo as u32, vo as u32, img));
+            linidx_dist.push(byte_index(u as u32, v as u32, img))
+        }
+    }
+    (linidx, linidx_dist)
+}
+
+fn undistort_precomputed(
+    img: &RgbImage,
+    (uvec, vvec, udvec, vdvec): &(Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>),
+) -> RgbImage {
+    let mut res = RgbImage::new(img.width(), img.height());
+    for (u, v, ud, vd) in izip!(uvec, vvec, udvec, vdvec) {
+        unsafe {
+            // this operation is safe since validity was checked before
+            // print!("u,v = {},{}\n", u, v);
+            // print!("ud,vd = {},{}\n", ud, vd);
+            res.unsafe_put_pixel(*u, *v, img[(*ud, *vd)]);
+        }
+    }
+    res
+}
+
+fn undistort_precomputed_linidx(
+    img: &RgbImage,
+    (linidx, linidx_dist): &(Vec<usize>, Vec<usize>),
+) -> RgbImage {
+    let mut res = RgbImage::new(img.width(), img.height());
+    let img_raw = img.as_raw();
+    let num_channel = Rgb::<u8>::CHANNEL_COUNT as usize;
+    let out = res.as_mut();
+    for (idx, idx_dist) in izip!(linidx, linidx_dist) {
+        let idx = *idx * num_channel;
+        let idx_dist = *idx_dist * num_channel;
+        out[idx] = img_raw[idx_dist];
+        out[idx + 1] = img_raw[idx_dist + 1];
+        out[idx + 2] = img_raw[idx_dist + 2];
+    }
+    res
+}
+
+fn undistort_precomputed_byteidx(
+    img: &RgbImage,
+    (linidx, linidx_dist): &(Vec<usize>, Vec<usize>),
+) -> RgbImage {
+    let mut res = RgbImage::new(img.width(), img.height());
+    let img_raw = img.as_raw();
+    // let num_channel = Rgb::<u8>::CHANNEL_COUNT as usize;
+    let out = res.as_mut();
+    for i in 0..linidx.len() {
+        let idx = linidx[i];
+        let idx_dist = linidx_dist[i];
+        out[idx] = img_raw[idx_dist];
+        out[idx + 1] = img_raw[idx_dist + 1];
+        out[idx + 2] = img_raw[idx_dist + 2];
+    }
+    res
+}
+
+// next would be to use rayon to compute an undistortion
+
+fn main() {
+    let conf = load_config().unwrap();
+    let img = image::open("tests/test.jpg").unwrap();
+    let img = img.to_rgb8();
+
+    let distortion = conf.distortion;
+    let projection = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
+    let desired = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
+    let camera = CameraModel::new(projection, distortion);
+
     //
 
-    let (uvec, vvec, udvec, vdvec, valids) = compute_undistortion_map((img.width(), img.height()), &camera, &desired);
-    println!("Starting Image Conversion Precomputed");
-    let start_time = Instant::now();
+    let map = compute_undistortion_map((img.width(), img.height()), &camera, &desired);
+    let map_linidx = compute_undistortion_map_linidx(&img, &camera, &desired);
+    let map_byte = compute_undistortion_map_byteidx(&img, &camera, &desired);
 
-    for (u, v, ud, vd, valid) in izip!(uvec, vvec, udvec, vdvec, valids) {
-        if valid {
-            unsafe{
-                // this operation is safe since validity was checked before
-                res2.unsafe_put_pixel(u, v, *img.get_pixel(ud, vd))
-            }
-        }
+
+    fn measure<F>(img: &RgbImage, function: F, name: &str)
+    where
+        F: for<'a> Fn(&'a RgbImage) -> RgbImage,
+    {
+        println!("Starting Image Conversion Precomputed: '{}'", name);
+        let start_time = Instant::now();
+        let res = function(&img);
+        let end_time = Instant::now();
+        let elapsed = end_time - start_time;
+        println!("Elapsed: {:?}", elapsed);
+        res.save(format!("results/{}.jpg", name)).unwrap()
     }
 
-    let end_time = Instant::now();
-    let elapsed = end_time - start_time;
-    println!("Elapsed: {:?}", elapsed);
+    let f1 = |x: &RgbImage| undisort_forloop(x, &camera, &desired);
+    let f2 = |x: &RgbImage| undistort_precomputed(x, &map);
+    let f3 = |x: &RgbImage| undistort_precomputed_linidx(x, &map_linidx);
+    let f4 = |x: &RgbImage| undistort_precomputed_byteidx(x, &map_byte);
 
-    res.save("results/distorted.jpg").unwrap();
+    measure(&img, f1, "undistort_forloop");
+    measure(&img, f2, "undistort_precomputed");
+    measure(&img, f3, "undistort_precomputed_linidx");
+    measure(&img, f4, "undistort_precomputed_byteidx");
 }
