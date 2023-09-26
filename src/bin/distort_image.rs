@@ -1,45 +1,17 @@
 use camera_models::*;
 use image::{GenericImage, ImageBuffer, Pixel, Rgb, RgbImage};
-use itertools::{izip, Itertools};
+use itertools::{enumerate, izip, Itertools};
+use rayon::iter::MultiZip;
+use rayon::prelude::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 use serde::Deserialize;
-use std::array;
 use std::iter::zip;
 use std::mem::size_of;
 use std::ops::Deref;
 use std::time::Instant;
+use std::{array, clone};
 use toml;
-// load image
-
-// fn interpolate_pixel(px1 ,) -> Rgb<u8> {
-//     let x0 = x.floor() as u32;
-//     let x1 = x0 + 1;
-//     let y0 = y.floor() as u32;
-//     let y1 = y0 + 1;
-//     let x0y0 = img.get_pixel(x0, y0);
-//     let x1y0 = img.get_pixel(x1, y0);
-//     let x0y1 = img.get_pixel(x0, y1);
-//     let x1y1 = img.get_pixel(x1, y1);
-//     let x0y0 = Rgb::from(x0y0);
-//     let x1y0 = Rgb::from(x1y0);
-//     let x0y1 = Rgb::from(x0y1);
-//     let x1y1 = Rgb::from(x1y1);
-//     let x0 = x0 as f64;
-//     let x1 = x1 as f64;
-//     let y0 = y0 as f64;
-//     let y1 = y1 as f64;
-//     let x = x - x0;
-//     let y = y - y0;
-//     let x0y0 = x0y0.map(|c| c as f64);
-//     let x1y0 = x1y0.map(|c| c as f64);
-//     let x0y1 = x0y1.map(|c| c as f64);
-//     let x1y1 = x1y1.map(|c| c as f64);
-//     let x0y0 = x0y0 * (1.0 - x) * (1.0 - y);
-//     let x1y0 = x1y0 * x * (1.0 - y);
-//     let x0y1 = x0y1 * (1.0 - x) * y;
-//     let x1y1 = x1y1 * x * y;
-//     let r = x0y0[0] + x1y0[0] + x0y1[0] + x1y1[0];
-//     let g = x0y0[1] + x1y0[1] + x0y1[1] + x1y1[1];
-//     let b =
 
 fn set_nearest_pixel(img: &mut RgbImage, x: f64, y: f64, src: &RgbImage) {
     let u = x.round() as u32;
@@ -152,6 +124,11 @@ fn linear_index<P: Pixel, C: Deref<Target = [P::Subpixel]>>(
 }
 
 #[inline]
+fn linear_index2(x: u32, y: u32, width: u32) -> usize {
+    (y * width + x) as usize
+}
+
+#[inline]
 fn byte_index<P: Pixel, C: Deref<Target = [P::Subpixel]>>(
     x: u32,
     y: u32,
@@ -180,7 +157,7 @@ fn compute_undistortion_map_linidx(
             // version A
 
             linidx.push(linear_index(uo as u32, vo as u32, img));
-            linidx_dist.push(linear_index(u as u32, v as u32, img))
+            linidx_dist.push(linear_index2(u as u32, v as u32, width))
         }
     }
     (linidx, linidx_dist)
@@ -262,6 +239,48 @@ fn undistort_precomputed_byteidx(
     res
 }
 
+fn compute_undistortion_map_linidx_rayon<'a>(
+    res: &'a mut RgbImage,
+    camera: &CameraModel<Pinhole, PlumbBob>,
+    desired: &Pinhole,
+) -> (Vec<&'a mut Rgb<u8>>, Vec<usize>) {
+    let (width, height) = res.dimensions();
+    let mut pixels: Vec<&mut Rgb<u8>> = Vec::new();
+    let mut linidx_dist: Vec<usize> = Vec::new();
+
+    for (uo, vo, pixel) in res.enumerate_pixels_mut() {
+        // rows[vo].
+
+        let PixelIndex(u, v) =
+            get_distorted_pixel_idx(PixelIndex(uo as u32, vo as u32), camera, desired);
+        let u = u.round();
+        let v = v.round();
+        let valid = 0. <= u && u < width as f64 && 0. <= v && v < height as f64;
+        if valid {
+            pixels.push(pixel);
+            linidx_dist.push(linear_index2(u as u32, v as u32, width));
+        }
+        // linidx[vo].push(linear_index(uo as u32, vo as u32, img));
+        // linidx_dist[vo].push(linear_index(u as u32, v as u32, img));
+        // valids[vo].push(valid);
+    }
+
+    (pixels, linidx_dist)
+}
+
+fn undistort_precomputed_linidx_rayon(
+    img: &RgbImage,
+    mut map: (Vec<&mut Rgb<u8>>, Vec<usize>),
+) -> () {
+    let img_raw = img.as_raw();
+    let num_channel = Rgb::<u8>::CHANNEL_COUNT as usize;
+    map.par_iter_mut().for_each(|(pixel, idx_dist)| {
+        for i in 0..num_channel {
+            pixel.0[i] = img_raw[*idx_dist*num_channel + i];
+        }
+    });
+
+}
 // next would be to use rayon to compute an undistortion
 
 fn main() {
@@ -273,17 +292,23 @@ fn main() {
     let projection = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
     let desired = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
     let camera = CameraModel::new(projection, distortion);
-
-    //
+    print!("camera_matrix = {:?}\n", projection.matrix());
+    print!("projection = {:?}\n", projection);
+    print!("distortion = {:?}\n", distortion);
+    print!("width = {}\n", img.width());
+    print!("height = {}\n", img.height());
+        //
 
     let map = compute_undistortion_map((img.width(), img.height()), &camera, &desired);
     let map_linidx = compute_undistortion_map_linidx(&img, &camera, &desired);
     let map_byte = compute_undistortion_map_byteidx(&img, &camera, &desired);
 
+    let mut res_rayon = RgbImage::new(img.width(), img.height());
+    let map_rayon = compute_undistortion_map_linidx_rayon(&mut res_rayon, &camera, &desired);
 
     fn measure<F>(img: &RgbImage, function: F, name: &str)
     where
-        F: for<'a> Fn(&'a RgbImage) -> RgbImage,
+        F: for<'a> FnOnce(&'a RgbImage) -> RgbImage,
     {
         println!("Starting Image Conversion Precomputed: '{}'", name);
         let start_time = Instant::now();
@@ -298,9 +323,23 @@ fn main() {
     let f2 = |x: &RgbImage| undistort_precomputed(x, &map);
     let f3 = |x: &RgbImage| undistort_precomputed_linidx(x, &map_linidx);
     let f4 = |x: &RgbImage| undistort_precomputed_byteidx(x, &map_byte);
+    // let f5 = |x: &RgbImage|
+
+    
+
 
     measure(&img, f1, "undistort_forloop");
     measure(&img, f2, "undistort_precomputed");
     measure(&img, f3, "undistort_precomputed_linidx");
     measure(&img, f4, "undistort_precomputed_byteidx");
+    // measure(&img, f5, "undistort_precomputed_linidx_rayon");
+
+    let name = "undistort_precomputed_rayon";
+    println!("Starting Image Conversion Precomputed: '{}'", name);
+    let start_time = Instant::now();
+    undistort_precomputed_linidx_rayon(&img, map_rayon);
+    let end_time = Instant::now();
+    let elapsed = end_time - start_time;
+    println!("Elapsed: {:?}", elapsed);
+    res_rayon.save(format!("results/{}.jpg", name)).unwrap();
 }

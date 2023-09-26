@@ -1,3 +1,5 @@
+use cv::nalgebra::Matrix2x3;
+
 use crate::base::{CameraMatrix, CameraRay, Pose};
 use crate::distortion::CameraDistortion;
 use crate::projection::CameraProjection;
@@ -63,6 +65,9 @@ impl Pinhole {
         let cy = height as f64 / 2.0;
         Self::new(fx, fy, cx, cy, 0.0)
     }
+    pub fn matrix(self) -> Matrix2x3<f64> {
+        Matrix2x3::new(self.fx, self.skew, self.cx, 0.0, self.fy, self.cy)
+    }
 }
 
 impl Into<CameraMatrix> for Pinhole {
@@ -100,4 +105,3 @@ where
         &self.model
     }
 }
-
