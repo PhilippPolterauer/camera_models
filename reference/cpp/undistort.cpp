@@ -8,7 +8,7 @@ int main()
 {
     // Load the precomputed maps (assuming you have them)
     cv::Mat distorted_img = cv::imread("tests/test.jpg");
-    cv::FileStorage fs("reference/cpp/camera.yaml", cv::FileStorage::READ);
+    cv::FileStorage fs("tests/camera.yaml", cv::FileStorage::READ);
     if (!fs.isOpened())
     {
         std::cerr << "Error: Could not open the file." << std::endl;

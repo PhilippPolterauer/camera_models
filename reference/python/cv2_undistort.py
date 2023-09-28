@@ -5,14 +5,11 @@ import time
 img = cv2.imread("tests/test.jpg")
 out = np.zeros_like(img)
 
-camera_matrix = np.array(
-    [
-        [1244.617161547647, 0.0, 2016.0],
-        [0.0, 930.993392665601, 1508.0],
-        [0.0, 0.0, 1.0],
-    ]
-)
-distortion = np.array([0.1, 0.1, 0.2, 0.1, 0.0])
+fs = cv2.FileStorage("tests/camera.yaml", cv2.FILE_STORAGE_READ)
+camera_matrix  = fs.getNode("camera_matrix").mat()
+distortion = fs.getNode("distortion").mat()
+fs.release()
+
 resolution = img.shape[1::-1]
 
 t0 = time.time()
@@ -37,4 +34,3 @@ cv2.remap(img, map1, map2, cv2.INTER_LINEAR, out)
 t1 = time.time()
 print("cv2.undistort precompute: ", t1 - t0)
 cv2.imwrite("../results/cv2_undistort_precompute_linear.jpg", out)
-
