@@ -13,12 +13,14 @@ class Pinhole(BaseModel):
     cy: float
     s: float
 
+
 class PlumbBob(BaseModel):
     k1: float
     k2: float
     p1: float
     p2: float
     k3: float
+
 
 class FishEye(BaseModel):
     k1: float
@@ -101,17 +103,36 @@ def calibrate_dataset(path, num_corners_x, num_corners_y, wait_time=100):
     return mtx, dist
 
 
-calibrate_dataset("datasets/caltech/calib_doc/htmls/calib_example/*.tif", 13, 12)
+# calibrate_dataset("datasets/caltech/calib_doc/htmls/calib_example/*.tif", 13, 12)
+
+resolution = (640, 480)
 
 
-mtx, dist = calibrate_dataset("datasets/smatt/Left_bmp/*.bmp", 12, 12, 1)
-projection = Pinhole(fx=mtx[0, 0], fy=mtx[1, 1], cx=mtx[0, 2], cy=mtx[1, 2], s=mtx[0, 1])
-distortion = PlumbBob(k1=dist[0], k2=dist[1], p1=dist[2], p2=dist[3], k3=dist[4])
-with open("datasets/smatt/calib.toml", "w") as file:
-    toml.dump(
-        {
-            "projection": projection.model_dump(),
-            "distortion": {"type": "PlumbBob", "coefficients": PlumbBob.model_dump(distortion)},
-        },
-        file,
+def calibrate_and_store(folder="datasets/smatt", name="Left_bmp"):
+    mtx, dist = calibrate_dataset(f"{folder}/{name}/*.bmp", 12, 12, 1)
+    dist = dist[0]
+    projection = Pinhole(
+        fx=mtx[0, 0], fy=mtx[1, 1], cx=mtx[0, 2], cy=mtx[1, 2], s=mtx[0, 1]
     )
+    mtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, resolution, 0.0, resolution)
+    new_projection = Pinhole(
+        fx=mtx[0, 0], fy=mtx[1, 1], cx=mtx[0, 2], cy=mtx[1, 2], s=mtx[0, 1]
+    )
+    distortion = PlumbBob(k1=dist[0], k2=dist[1], p1=dist[2], p2=dist[3], k3=dist[4])
+
+    with open(f"{folder}/calib_{name}.toml", "w") as file:
+        toml.dump(
+            {
+                "projection": projection.model_dump(),
+                "distortion": {
+                    "type": "PlumbBob",
+                    "coefficients": distortion.model_dump(),
+                },
+                "new_projection": new_projection.model_dump(),
+            },
+            file,
+        )
+
+
+calibrate_and_store("datasets/smatt", "Left_bmp")
+calibrate_and_store("datasets/smatt", "Right_bmp")

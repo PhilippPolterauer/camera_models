@@ -8,7 +8,7 @@ Implement each of the following models
 - [ ] Equidistant / KannalaBrandt
 
 ## Distortion models
-- [ ] Brown-Conrady model, Plumb_bob
+- [ ] Brown-Conrady model, Plumb-Bob
 - [ ] Polynomial
 
 ## Renderer

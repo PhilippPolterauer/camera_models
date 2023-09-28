@@ -1,4 +1,5 @@
 use nalgebra::{Matrix2x3, RealField, UnitQuaternion, Vector2};
+use serde::de;
 use std::convert::From;
 pub type Point = nalgebra::Point3<f64>;
 pub type Rotation = UnitQuaternion<f64>;
@@ -7,6 +8,8 @@ pub type Vector = nalgebra::Vector3<f64>;
 pub type UVector = nalgebra::UnitVector3<f64>;
 pub type CameraMatrix = Matrix2x3<f64>;
 pub type ImagePoint<T> = nalgebra::Point2<T>;
+
+#[derive(Clone)]
 pub struct PixelIndex<T>(pub T, pub T);
 
 impl PixelIndex<f64> {
@@ -19,6 +22,13 @@ impl PixelIndex<f64> {
 
     pub fn nearest(self) -> PixelIndex<u32> {
         PixelIndex(*self.x() as u32, *self.y() as u32)
+    }
+}
+
+impl Into<PixelIndex<u32>> for PixelIndex<f64> {
+    fn into(self) -> PixelIndex<u32> {
+        let PixelIndex(u, v) = self;
+        PixelIndex(u.round() as u32, v.round() as u32)
     }
 }
 
