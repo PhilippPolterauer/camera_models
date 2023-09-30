@@ -1,21 +1,72 @@
-use cv::nalgebra::Matrix2x3;
+use std::fmt::Debug;
 
-use crate::base::{CameraMatrix, CameraRay, Pose};
 use crate::distortion::CameraDistortion;
 use crate::projection::CameraProjection;
+use cv::nalgebra::Matrix2x3;
+use nalgebra::{Isometry3, Vector3};
 
-pub struct CameraModel<T, V>
-where
-    T: CameraProjection<f64>,
-    V: CameraDistortion,
-{
+#[derive(Clone)]
+pub struct PixelIndex<T>(pub T, pub T);
+
+impl PixelIndex<f64> {
+    pub fn x(&self) -> &f64 {
+        &self.0
+    }
+
+    pub fn y(&self) -> &f64 {
+        &self.1
+    }
+
+    pub fn nearest(self) -> PixelIndex<u32> {
+        PixelIndex(self.x().round() as u32, self.y().round() as u32)
+    }
+}
+
+impl Into<PixelIndex<u32>> for PixelIndex<f64> {
+    fn into(self) -> PixelIndex<u32> {
+        let PixelIndex(u, v) = self;
+        PixelIndex(u.round() as u32, v.round() as u32)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CameraRay<T: Copy> {
+    x: T,
+    y: T,
+}
+
+impl<T: num_traits::One + Clone + Copy> CameraRay<T> {
+    pub fn new(x: T, y: T) -> Self {
+        Self { x, y }
+    }
+    pub fn x(&self) -> T {
+        self.x
+    }
+    pub fn y(&self) -> T {
+        self.y
+    }
+    pub fn z(&self) -> T {
+        T::one()
+    }
+    pub fn xy(&self) -> (T, T) {
+        (self.x(), self.y())
+    }
+    pub fn xyz(&self) -> (T, T, T) {
+        (self.x(), self.y(), self.z())
+    }
+    pub fn as_vector(&self) -> Vector3<T> {
+        Vector3::new(self.x, self.y, self.z())
+    }
+}
+
+pub struct CameraModel<T, V> {
     projection: T,
     distortion: V,
 }
 impl<T, V> CameraModel<T, V>
 where
     T: CameraProjection<f64>,
-    V: CameraDistortion,
+    V: CameraDistortion<f64>,
 {
     pub fn new(projection: T, distortion: V) -> Self {
         Self {
@@ -29,6 +80,11 @@ where
     pub fn projection(&self) -> &T {
         &self.projection
     }
+    pub fn project<U: Into<CameraRay<f64>>>(&self, ray: U) -> PixelIndex<f64> {
+        let ray = ray.into();
+        let distorted = self.distortion().distort(&ray);
+        self.projection().project(&distorted)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,12 +94,6 @@ pub struct Pinhole {
     pub cx: f64,
     pub cy: f64,
     pub skew: f64,
-}
-
-impl Default for Pinhole {
-    fn default() -> Self {
-        Self::new(1.0, 1.0, 0.0, 0.0, 0.0)
-    }
 }
 
 impl Pinhole {
@@ -59,7 +109,7 @@ impl Pinhole {
     pub fn from_resolution_fov(resolution: (u32, u32), fov: (f64, f64)) -> Self {
         let (width, height) = resolution;
         let (fov_x, fov_y) = fov;
-        let fx = width as f64 / (2.0 * (fov_x / 2.0).tan());
+        let fx = (width as f64) / (2.0 * (fov_x / 2.0).tan());
         let fy = height as f64 / (2.0 * (fov_y / 2.0).tan());
         let cx = width as f64 / 2.0;
         let cy = height as f64 / 2.0;
@@ -70,36 +120,24 @@ impl Pinhole {
     }
 }
 
-impl Into<CameraMatrix> for Pinhole {
-    fn into(self) -> CameraMatrix {
-        let mut m = CameraMatrix::zeros();
-        m[(0, 0)] = self.fx;
-        m[(0, 1)] = self.skew;
-        m[(0, 2)] = self.cx;
-        m[(1, 1)] = self.fy;
-        m[(1, 2)] = self.cy;
-        m
-    }
-}
-
 pub struct Camera<T, V>
 where
     T: CameraProjection<f64>,
-    V: CameraDistortion,
+    V: CameraDistortion<f64>,
 {
     model: CameraModel<T, V>,
-    worldpose: Pose,
+    view: Isometry3<f64>,
 }
 impl<T, V> Camera<T, V>
 where
     T: CameraProjection<f64>,
-    V: CameraDistortion,
+    V: CameraDistortion<f64>,
 {
-    pub fn new(model: CameraModel<T, V>, worldpose: Pose) -> Self {
-        Self { model, worldpose }
+    pub fn new(model: CameraModel<T, V>, view: Isometry3<f64>) -> Self {
+        Self { model, view }
     }
-    pub fn pose(&self) -> &Pose {
-        &self.worldpose
+    pub fn pose(&self) -> &Isometry3<f64> {
+        &self.view
     }
     pub fn model(&self) -> &CameraModel<T, V> {
         &self.model

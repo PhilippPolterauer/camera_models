@@ -36,7 +36,7 @@ fn get_distorted_pixel_idx(
     // then we use this find the color value of the the pixel in the src image which shall be used as the current pixels color
 
     // we project the distorted ray into the image and crop it to the image size
-    camera.project(&ray)
+    camera.project(ray)
     // print!("pd = {:?}\n", pd);
 }
 
