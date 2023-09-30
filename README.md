@@ -1,8 +1,8 @@
 # Camera Models 
 a rust library for working with common Camera Models. 
 
-**Note**
-This is a hobby project for learning rust. please do not expect production ready quality, although I would highly appreciate issues or other suggestion for improvements!
+> **Note**
+> This is a hobby project for learning rust. please do not expect production ready quality, although I would highly appreciate issues or other suggestion for improvements!
 
 
 ## Goal
