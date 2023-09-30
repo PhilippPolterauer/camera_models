@@ -370,6 +370,7 @@ fn main() {
     let name = "undistort_precomputed_rayon";
     println!("Starting Image Conversion Precomputed: '{}'", name);
     let start_time = Instant::now();
+    let mut res2 = RgbImage::new(img.width(), img.height());
     undistort_precomputed_linidx_rayon(&img, map_rayon);
     let end_time = Instant::now();
     let elapsed = end_time - start_time;
@@ -385,4 +386,7 @@ fn main() {
     println!("Elapsed: {:?}", elapsed);
 
     res.save(format!("results/{}.jpg", name)).unwrap();
+    // this is only here since we want to measure the allocation
+    // TODO remove all the allocations from the other undistortion variants!
+    res2.put_pixel(1, 1, Rgb([255, 0, 0]));
 }
