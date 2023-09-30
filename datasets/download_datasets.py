@@ -1,6 +1,5 @@
 import urllib.request
 import zipfile
-from pathlib import Path
 
 # Download the dataset smatt
 url = "http://vision.deis.unibo.it/~smatt/stereo/Calibration.zip"    

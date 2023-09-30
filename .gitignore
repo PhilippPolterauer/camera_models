@@ -1,5 +1,6 @@
 /target
-datasets
+datasets/*
 .vscode
 *.out
 reference/cpp/undistort
+!datasets/download_datasets.py
