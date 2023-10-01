@@ -1,13 +1,15 @@
 use crate::camera::CameraRay;
+use approx::RelativeEq;
 use serde::Deserialize;
 
 pub trait CameraDistortion<T>
 where
-    T: Copy,
+    T: Copy + RelativeEq,
 {
+    /// given a ray in camera, return a distorted ray
     fn distort(&self, ray: &CameraRay<T>) -> CameraRay<T>;
 }
-impl<T: Copy> CameraDistortion<T> for Ideal {
+impl<T: Copy + RelativeEq> CameraDistortion<T> for Ideal {
     fn distort(&self, ray: &CameraRay<T>) -> CameraRay<T> {
         *ray
     }
@@ -73,6 +75,8 @@ impl CameraDistortion<f64> for PlumbBob {
 impl CameraDistortion<f64> for Fisheye {
     // fromhttps://docs.opencv.org/3.4/db/d58/group__calib3d__fisheye.html
     //   a=x/z and b=y/zr2=a2+b2θ=atan(r)
+    /// the implementation is inspired from https://docs.opencv.org/3.4/db/d58/group__calib3d__fisheye.html
+    /// but the opencv formulation would not supported cameras with more then 180° fov. We implement it instead with atan2 to allow for that.
     fn distort(&self, ray: &CameraRay<f64>) -> CameraRay<f64> {
         let (x, y) = ray.xy();
         let (r, theta, theta2, theta4, theta6, theta8, x, y) = Self::params(x, y);

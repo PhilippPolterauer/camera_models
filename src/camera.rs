@@ -1,11 +1,10 @@
-use std::fmt::Debug;
-
 use crate::distortion::CameraDistortion;
 use crate::projection::CameraProjection;
-use cv::nalgebra::Matrix2x3;
+use approx::{abs_diff_eq, relative_eq, AbsDiffEq, RelativeEq};
 use nalgebra::{Isometry3, Vector3};
+use std::fmt::Debug;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct PixelIndex<T>(pub T, pub T);
 
 impl PixelIndex<f64> {
@@ -22,20 +21,30 @@ impl PixelIndex<f64> {
     }
 }
 
-impl Into<PixelIndex<u32>> for PixelIndex<f64> {
-    fn into(self) -> PixelIndex<u32> {
-        let PixelIndex(u, v) = self;
-        PixelIndex(u.round() as u32, v.round() as u32)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CameraRay<T: Copy> {
+pub struct CameraRay<T: Copy + RelativeEq> {
     x: T,
     y: T,
 }
+impl<T: Copy + RelativeEq<T>> AbsDiffEq for CameraRay<T> {
+    type Epsilon = T::Epsilon;
+    fn default_epsilon() -> Self::Epsilon {
+        T::default_epsilon()
+    }
+    fn abs_diff_eq(&self, other: &Self, _: Self::Epsilon) -> bool {
+        abs_diff_eq!(self.x, other.x) && abs_diff_eq!(self.y, other.y)
+    }
+}
 
-impl<T: num_traits::One + Clone + Copy> CameraRay<T> {
+impl<T: RelativeEq + Copy + AbsDiffEq> RelativeEq for CameraRay<T> {
+    fn default_max_relative() -> Self::Epsilon {
+        T::default_max_relative()
+    }
+    fn relative_eq(&self, other: &Self, _: T::Epsilon, _: T::Epsilon) -> bool {
+        return relative_eq!(self.x, other.x) && relative_eq!(self.y, other.y);
+    }
+}
+impl<T: num_traits::One + Clone + Copy + RelativeEq> CameraRay<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
@@ -87,39 +96,6 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Pinhole {
-    pub fx: f64,
-    pub fy: f64,
-    pub cx: f64,
-    pub cy: f64,
-    pub skew: f64,
-}
-
-impl Pinhole {
-    pub fn new(fx: f64, fy: f64, cx: f64, cy: f64, skew: f64) -> Self {
-        Self {
-            fx,
-            fy,
-            cx,
-            cy,
-            skew,
-        }
-    }
-    pub fn from_resolution_fov(resolution: (u32, u32), fov: (f64, f64)) -> Self {
-        let (width, height) = resolution;
-        let (fov_x, fov_y) = fov;
-        let fx = (width as f64) / (2.0 * (fov_x / 2.0).tan());
-        let fy = height as f64 / (2.0 * (fov_y / 2.0).tan());
-        let cx = width as f64 / 2.0;
-        let cy = height as f64 / 2.0;
-        Self::new(fx, fy, cx, cy, 0.0)
-    }
-    pub fn matrix(self) -> Matrix2x3<f64> {
-        Matrix2x3::new(self.fx, self.skew, self.cx, 0.0, self.fy, self.cy)
-    }
-}
-
 pub struct Camera<T, V>
 where
     T: CameraProjection<f64>,
@@ -142,4 +118,12 @@ where
     pub fn model(&self) -> &CameraModel<T, V> {
         &self.model
     }
+}
+
+pub struct Fisheye {
+    pub fx: f64,
+    pub fy: f64,
+    pub cx: f64,
+    pub cy: f64,
+    pub skew: f64,
 }
