@@ -1,7 +1,7 @@
 // use crate::base::{CameraRay, Point, Point2, Transform, PixelIndex};
 use crate::camera::{CameraRay, PixelIndex};
 use approx::RelativeEq;
-use nalgebra::Matrix2x3;
+use nalgebra::{Matrix2x3, Rotation3, UnitVector3, Vector3};
 #[derive(Debug, Clone, Copy)]
 pub struct Pinhole {
     pub fx: f64,
@@ -87,15 +87,29 @@ impl CameraProjection<f64> for Fisheye {
             cy,
             skew,
         } = self;
+
         let (x, y, z) = ray.xyz();
-        let r = (x * x + y * y).sqrt();
-        let theta = r.atan2(z);
-        let alpha = y.atan2(x);
-        let theta_x = alpha.cos() * theta;
-        let theta_y = alpha.sin() * theta;
-        let u = fx * theta_x + skew * theta_y + cx;
-        let v = fy * theta_y + cy;
-        PixelIndex(u, v)
+        let ray_in = UnitVector3::new_normalize(Vector3::new(x, y, z));
+        let ray_z = Vector3::<f64>::z_axis();
+        
+        let angle = Vector3::angle(&ray_z, &ray_in);
+        let axis = ray_z.cross(&ray_in).try_normalize(f64::EPSILON);
+        match axis {
+            Some(axis) => {
+                let axis = axis*angle;
+                let theta_x = axis.y;
+                let theta_y = -axis.x;
+                let u = fx * theta_x + skew * theta_y + cx;
+                let v = fy * theta_y + cy;
+                PixelIndex(u, v)
+            }
+            None => {
+                let u = cx;
+                let v = cy;
+                PixelIndex(*u, *v)
+            }
+        }
+
     }
     fn unproject(&self, PixelIndex(u, v): &PixelIndex<f64>) -> CameraRay<f64> {
         let Fisheye {
@@ -108,12 +122,12 @@ impl CameraProjection<f64> for Fisheye {
 
         let theta_y = (v - cy) / fy;
         let theta_x = (u - cx - skew * theta_y) / fx;
-        let alpha = theta_y.atan2(theta_x);
-        let theta = (theta_x * theta_x + theta_y * theta_y).sqrt();
-        let z = theta.cos();
-        let x = alpha.cos() * theta.sin();
-        let y = alpha.sin() * theta.sin();
-
+        let ray = Vector3::z_axis();
+        let rot = Rotation3::from_scaled_axis(Vector3::new(-theta_y, theta_x, 0.0));
+        let ray = rot * ray;
+        let x: f64 = ray.x;
+        let y = ray.y;
+        let z = ray.z;
         CameraRay::new(x / z, y / z)
     }
 }
@@ -146,10 +160,17 @@ mod tests {
             (0.2, 0.0, 1.0),
             (0.0, 0.2, 1.0),
             (0.2, 0.2, 1.0),
+            (0.4, 0., 1.0),
+            (-0.4, 0., 1.0),
+            (-0.4, 0.2, 1.0),
+            (-0.3, -0.4, 1.0),
+            (0., -0.4, 1.0),
+            (0., 0.3, 1.0),
         ] {
-            let src = CameraRay::new(x/z, y/z);
-            let dst = PROJECTION.unproject(&PROJECTION.project(&src));
-            assert_relative_eq!(src, dst, epsilon = 0.00001)
+            let src = CameraRay::new(x / z, y / z);
+            let mid = PROJECTION.project(&src);
+            let dst = PROJECTION.unproject(&mid);
+            assert!(src.x().abs_diff_eq(&dst.x(), 0.00001) && src.y().abs_diff_eq(&dst.y(), 0.00001))
         }
     }
 }
