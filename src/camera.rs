@@ -1,8 +1,8 @@
 use crate::distortion::CameraDistortion;
 use crate::projection::CameraProjection;
-use approx::{abs_diff_eq, relative_eq, AbsDiffEq, RelativeEq};
+
 use nalgebra::{
-    Isometry3, RealField, Scalar, SimdComplexField, SimdPartialOrd, SimdRealField, Vector3,
+    Isometry3, Vector3,
 };
 use std::fmt::Debug;
 

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use std::ops::Deref;
 use std::time::Instant;
 
-use toml;
+
 
 use std::fs::File;
 use std::io::Read;
@@ -73,7 +73,7 @@ fn undisort_forloop(
     desired: &Pinhole,
 ) -> RgbImage {
     let mut res = RgbImage::new(img.width(), img.height());
-    print!("size = {}\n", (res.as_raw()).len());
+    println!("size = {}", (res.as_raw()).len());
     for (u, v, px) in res.enumerate_pixels_mut() {
         // compute the distorted location
 
@@ -88,7 +88,7 @@ fn undisort_forloop(
         // print!("u, v = {}, {}\n", u, v);
         // the problem is that we need to send in x' and y' from https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#ga7dfb72c9cf9780a347fbe3d1c47e5d5a
 
-        let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(u, v), &camera, &desired);
+        let PixelIndex(u, v) = get_distorted_pixel_idx(PixelIndex(u, v), camera, desired);
         // clamp to image size
         // print!("u, v = {}, {}\n", u, v);
         let x = u.round() as u32;
@@ -133,7 +133,7 @@ fn compute_undistortion_map_linidx(
         if 0. <= u && u < width as f64 && 0. <= v && v < height as f64 {
             // version A
 
-            linidx.push(linear_index(uo as u32, vo as u32, width));
+            linidx.push(linear_index(uo, vo, width));
             linidx_dist.push(linear_index(u as u32, v as u32, width))
         }
     }
@@ -157,7 +157,7 @@ fn compute_undistortion_map_byteidx(
         if 0. <= u && u < width as f64 && 0. <= v && v < height as f64 {
             // version A
 
-            linidx.push(byte_index(uo as u32, vo as u32, img));
+            linidx.push(byte_index(uo, vo, img));
             linidx_dist.push(byte_index(u as u32, v as u32, img))
         }
     }
@@ -229,7 +229,7 @@ fn compute_undistortion_map_linidx_rayon<'a>(
         // rows[vo].
 
         let PixelIndex(u, v) =
-            get_distorted_pixel_idx(PixelIndex(uo as u32, vo as u32), camera, desired);
+            get_distorted_pixel_idx(PixelIndex(uo, vo), camera, desired);
         let u = u.round();
         let v = v.round();
         let valid = 0. <= u && u < width as f64 && 0. <= v && v < height as f64;
@@ -245,7 +245,7 @@ fn compute_undistortion_map_linidx_rayon<'a>(
 fn undistort_precomputed_linidx_rayon(
     img: &RgbImage,
     mut map: (Vec<&mut Rgb<u8>>, Vec<usize>),
-) -> () {
+) {
     let img_raw = img.as_raw();
     let num_channel = Rgb::<u8>::CHANNEL_COUNT as usize;
     map.par_iter_mut().for_each(|(pixel, idx_dist)| {
@@ -294,7 +294,7 @@ fn undistort_row(
     dst: PixelsMut<Rgb<u8>>,
     src: &RgbImage,
     row_map: &Vec<Option<PixelIndex<u32>>>,
-) -> () {
+) {
     for (dst, idx) in dst.zip(row_map.iter()) {
         match idx {
             Some(PixelIndex(x, y)) => *dst = *src.get_pixel(*x, *y),
@@ -324,11 +324,11 @@ fn main() {
     let projection = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
     let desired = Pinhole::from_resolution_fov((img.width(), img.height()), (90., 90.));
     let camera = CameraModel::new(projection, distortion);
-    print!("camera_matrix = {:?}\n", projection.matrix());
-    print!("projection = {:?}\n", projection);
-    print!("distortion = {:?}\n", distortion);
-    print!("width = {}\n", img.width());
-    print!("height = {}\n", img.height());
+    println!("camera_matrix = {:?}", projection.matrix());
+    println!("projection = {:?}", projection);
+    println!("distortion = {:?}", distortion);
+    println!("width = {}", img.width());
+    println!("height = {}", img.height());
     //
 
     let map = compute_undistortion_map((img.width(), img.height()), &camera, &desired);
@@ -345,7 +345,7 @@ fn main() {
     {
         println!("Starting Image Conversion Precomputed: '{}'", name);
         let start_time = Instant::now();
-        let res = function(&img);
+        let res = function(img);
         let end_time = Instant::now();
         let elapsed = end_time - start_time;
         println!("Elapsed: {:?}", elapsed);

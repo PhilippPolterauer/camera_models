@@ -1,10 +1,9 @@
 // use crate::base::{CameraRay, Point, Point2, Transform, PixelIndex};
 use crate::{
     camera::{CameraRay, PixelIndex},
-    Camera,
 };
-use approx::RelativeEq;
-use nalgebra::{Matrix2x3, Rotation3, Scalar, UnitVector3, Vector3};
+
+use nalgebra::{Matrix2x3, Rotation3, Vector3};
 #[derive(Debug, Clone, Copy)]
 pub struct Pinhole {
     pub fx: f64,
@@ -97,7 +96,7 @@ impl CameraProjection for Fisheye {
         let axis_sin = Vector3::new(-y, x, 0.0) / len;
         let angle = axis_sin.norm().asin();
         if axis_sin.norm() < f64::EPSILON.sqrt() {
-            return PixelIndex(*cx, *cy);
+            PixelIndex(*cx, *cy)
         } else {
             let axis = Vector3::from_row_slice(&[0., 0., 1.])
                 .cross(&ray.vector)
@@ -133,7 +132,7 @@ impl CameraProjection for Fisheye {
 
 #[cfg(test)]
 mod tests {
-    use approx::{assert_relative_eq, AbsDiffEq};
+    use approx::{AbsDiffEq};
 
     use super::*;
     const PROJECTION: Fisheye = Fisheye {
@@ -145,7 +144,7 @@ mod tests {
     };
     #[test]
     fn test_pixel2pixel() {
-        for (u, v) in vec![(0.0, 0.0), (0.2, 1.0), (1.0, 0.0), (0.9, 1.0)] {
+        for (u, v) in [(0.0, 0.0), (0.2, 1.0), (1.0, 0.0), (0.9, 1.0)] {
             let src = PixelIndex(u, v);
             let ray = PROJECTION.unproject(&src);
             let dst = PROJECTION.project(&ray);
