@@ -1,7 +1,10 @@
 // use crate::base::{CameraRay, Point, Point2, Transform, PixelIndex};
-use crate::camera::{CameraRay, PixelIndex};
+use crate::{
+    camera::{CameraRay, PixelIndex},
+    Camera,
+};
 use approx::RelativeEq;
-use nalgebra::{Matrix2x3, Rotation3, UnitVector3, Vector3};
+use nalgebra::{Matrix2x3, Rotation3, Scalar, UnitVector3, Vector3};
 #[derive(Debug, Clone, Copy)]
 pub struct Pinhole {
     pub fx: f64,
@@ -44,13 +47,13 @@ impl Pinhole {
     }
 }
 
-pub trait CameraProjection<T: Copy + RelativeEq> {
-    fn project(&self, rhs: &CameraRay<T>) -> PixelIndex<T>;
-    fn unproject(&self, rhs: &PixelIndex<T>) -> CameraRay<T>;
+pub trait CameraProjection {
+    fn project(&self, rhs: &CameraRay) -> PixelIndex<f64>;
+    fn unproject(&self, rhs: &PixelIndex<f64>) -> CameraRay;
 }
 
-impl CameraProjection<f64> for Pinhole {
-    fn project(&self, ray: &CameraRay<f64>) -> PixelIndex<f64> {
+impl CameraProjection for Pinhole {
+    fn project(&self, ray: &CameraRay) -> PixelIndex<f64> {
         let Pinhole {
             fx,
             fy,
@@ -63,7 +66,7 @@ impl CameraProjection<f64> for Pinhole {
         let v = fy * y + cy;
         PixelIndex(u, v)
     }
-    fn unproject(&self, PixelIndex(u, v): &PixelIndex<f64>) -> CameraRay<f64> {
+    fn unproject(&self, PixelIndex(u, v): &PixelIndex<f64>) -> CameraRay {
         let Pinhole {
             fx,
             fy,
@@ -74,12 +77,12 @@ impl CameraProjection<f64> for Pinhole {
 
         let y = (v - cy) / fy;
         let x = (u - cx - skew * y) / fx;
-        CameraRay::new(x, y)
+        CameraRay::new(x, y, 1.0)
     }
 }
 
-impl CameraProjection<f64> for Fisheye {
-    fn project(&self, ray: &CameraRay<f64>) -> PixelIndex<f64> {
+impl CameraProjection for Fisheye {
+    fn project(&self, ray: &CameraRay) -> PixelIndex<f64> {
         let Fisheye {
             fx,
             fy,
@@ -87,31 +90,27 @@ impl CameraProjection<f64> for Fisheye {
             cy,
             skew,
         } = self;
-
-        let (x, y, z) = ray.xyz();
-        let ray_in = UnitVector3::new_normalize(Vector3::new(x, y, z));
-        let ray_z = Vector3::<f64>::z_axis();
-        
-        let angle = Vector3::angle(&ray_z, &ray_in);
-        let axis = ray_z.cross(&ray_in).try_normalize(f64::EPSILON);
-        match axis {
-            Some(axis) => {
-                let axis = axis*angle;
-                let theta_x = axis.y;
-                let theta_y = -axis.x;
-                let u = fx * theta_x + skew * theta_y + cx;
-                let v = fy * theta_y + cy;
-                PixelIndex(u, v)
-            }
-            None => {
-                let u = cx;
-                let v = cy;
-                PixelIndex(*u, *v)
-            }
+        // cross product with a pure z vector is: (-y, x, 0) and its norm is len(ray)*sin(angle)
+        let x = ray.vector.x;
+        let y = ray.vector.y;
+        let len = ray.vector.norm();
+        let axis_sin = Vector3::new(-y, x, 0.0) / len;
+        let angle = axis_sin.norm().asin();
+        if axis_sin.norm() < f64::EPSILON.sqrt() {
+            return PixelIndex(*cx, *cy);
+        } else {
+            let axis = Vector3::from_row_slice(&[0., 0., 1.])
+                .cross(&ray.vector)
+                .normalize()
+                * angle;
+            let theta_x = axis.y;
+            let theta_y = -axis.x;
+            let u = fx * theta_x + skew * theta_y + cx;
+            let v = fy * theta_y + cy;
+            PixelIndex(u, v)
         }
-
     }
-    fn unproject(&self, PixelIndex(u, v): &PixelIndex<f64>) -> CameraRay<f64> {
+    fn unproject(&self, PixelIndex(u, v): &PixelIndex<f64>) -> CameraRay {
         let Fisheye {
             fx,
             fy,
@@ -125,10 +124,10 @@ impl CameraProjection<f64> for Fisheye {
         let ray = Vector3::z_axis();
         let rot = Rotation3::from_scaled_axis(Vector3::new(-theta_y, theta_x, 0.0));
         let ray = rot * ray;
-        let x: f64 = ray.x;
+        let x = ray.x;
         let y = ray.y;
         let z = ray.z;
-        CameraRay::new(x / z, y / z)
+        CameraRay::new(x, y, z)
     }
 }
 
@@ -167,10 +166,16 @@ mod tests {
             (0., -0.4, 1.0),
             (0., 0.3, 1.0),
         ] {
-            let src = CameraRay::new(x / z, y / z);
+            let src = CameraRay::new(x, y, z);
             let mid = PROJECTION.project(&src);
             let dst = PROJECTION.unproject(&mid);
-            assert!(src.x().abs_diff_eq(&dst.x(), 0.00001) && src.y().abs_diff_eq(&dst.y(), 0.00001))
+            println!(
+                "src {:?}, mid {:?}, dst {:?}",
+                src.vector.normalize(),
+                mid,
+                dst.vector.normalize()
+            );
+            assert_eq!(src, dst)
         }
     }
 }

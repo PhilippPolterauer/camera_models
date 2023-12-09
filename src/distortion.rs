@@ -1,16 +1,14 @@
 use crate::camera::CameraRay;
 use approx::RelativeEq;
+use nalgebra::Scalar;
 use serde::Deserialize;
 
-pub trait CameraDistortion<T>
-where
-    T: Copy + RelativeEq,
-{
+pub trait CameraDistortion {
     /// given a ray in camera, return a distorted ray
-    fn distort(&self, ray: &CameraRay<T>) -> CameraRay<T>;
+    fn distort(&self, ray: &CameraRay) -> CameraRay;
 }
-impl<T: Copy + RelativeEq> CameraDistortion<T> for Ideal {
-    fn distort(&self, ray: &CameraRay<T>) -> CameraRay<T> {
+impl CameraDistortion for Ideal {
+    fn distort(&self, ray: &CameraRay) -> CameraRay {
         *ray
     }
 }
@@ -61,29 +59,29 @@ impl Fisheye {
     }
 }
 
-impl CameraDistortion<f64> for PlumbBob {
-    fn distort(&self, ray: &CameraRay<f64>) -> CameraRay<f64> {
+impl CameraDistortion for PlumbBob {
+    fn distort(&self, ray: &CameraRay) -> CameraRay {
         let (x, y) = ray.xy();
         let (x2, y2, xy, r2, r4, r6) = PlumbBob::params(x, y);
         let radial = 1.0 + self.k1 * r2 + self.k2 * r4 + self.k3 * r6;
         let tangential_x = 2.0 * self.p1 * xy + self.p2 * (r2 + 2.0 * x2);
         let tangential_y = self.p1 * (r2 + 2.0 * y2) + 2.0 * self.p2 * xy;
-        CameraRay::new(radial * x + tangential_x, radial * y + tangential_y)
+        CameraRay::new(radial * x + tangential_x, radial * y + tangential_y, 1.)
     }
 }
 
-impl CameraDistortion<f64> for Fisheye {
+impl CameraDistortion for Fisheye {
     // fromhttps://docs.opencv.org/3.4/db/d58/group__calib3d__fisheye.html
     //   a=x/z and b=y/zr2=a2+b2θ=atan(r)
     /// the implementation is inspired from https://docs.opencv.org/3.4/db/d58/group__calib3d__fisheye.html
     /// but the opencv formulation would not supported cameras with more then 180° fov. We implement it instead with atan2 to allow for that.
-    fn distort(&self, ray: &CameraRay<f64>) -> CameraRay<f64> {
+    fn distort(&self, ray: &CameraRay) -> CameraRay {
         let (x, y) = ray.xy();
         let (r, theta, theta2, theta4, theta6, theta8, x, y) = Self::params(x, y);
         let theta_d_r = theta
             * (1.0 + self.k1 * theta2 + self.k2 * theta4 + self.k3 * theta6 + self.k4 * theta8)
             / r;
-        CameraRay::new(theta_d_r * x, theta_d_r * y)
+        CameraRay::new(theta_d_r * x, theta_d_r * y, 1.)
     }
 }
 
@@ -94,15 +92,15 @@ mod tests {
     fn test_plumb() {
         use super::*;
         let p = PlumbBob::new(0.0, 0.0, 0.0, 0.0, 0.0);
-        let p2 = p.distort(&CameraRay::new(1.0, 1.0));
-        assert_eq!(p2, CameraRay::new(1.0, 1.0));
+        let p2 = p.distort(&CameraRay::new(1.0, 1.0, 1.));
+        assert_eq!(p2, CameraRay::new(1.0, 1.0, 1.0));
     }
     #[test]
     fn test_roundtrip() {
         use super::*;
         let p = PlumbBob::new(0.0, 0.0, 0.0, 0.0, 0.0);
-        let p2 = p.distort(&CameraRay::new(1.0, 1.0));
+        let p2 = p.distort(&CameraRay::new(1.0, 1.0, 1.0));
         let p3 = p.distort(&p2);
-        assert_eq!(p3, CameraRay::new(1.0, 1.0));
+        assert_eq!(p3, CameraRay::new(1.0, 1.0, 1.0));
     }
 }

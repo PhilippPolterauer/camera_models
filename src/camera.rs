@@ -1,10 +1,26 @@
 use crate::distortion::CameraDistortion;
 use crate::projection::CameraProjection;
 use approx::{abs_diff_eq, relative_eq, AbsDiffEq, RelativeEq};
-use nalgebra::{Isometry3, Vector3};
+use nalgebra::{
+    Isometry3, RealField, Scalar, SimdComplexField, SimdPartialOrd, SimdRealField, Vector3,
+};
 use std::fmt::Debug;
 
 #[derive(Clone, PartialEq, Debug)]
+
+// TODO think about a better name for this
+// maybe:
+// - PixelCoordinate
+// - PixelLocation
+// - PixelIndex
+// - PixelPosition
+// - PixelPoint
+// - ImageLocation
+// - ImageCoordinate
+// - ImageIndex
+// - ImagePosition
+// - ImagePoint
+
 pub struct PixelIndex<T>(pub T, pub T);
 
 impl PixelIndex<f64> {
@@ -21,50 +37,27 @@ impl PixelIndex<f64> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CameraRay<T: Copy + RelativeEq> {
-    x: T,
-    y: T,
+#[derive(Debug, Clone, Copy)]
+pub struct CameraRay {
+    pub vector: Vector3<f64>,
 }
-impl<T: Copy + RelativeEq<T>> AbsDiffEq for CameraRay<T> {
-    type Epsilon = T::Epsilon;
-    fn default_epsilon() -> Self::Epsilon {
-        T::default_epsilon()
-    }
-    fn abs_diff_eq(&self, other: &Self, _: Self::Epsilon) -> bool {
-        abs_diff_eq!(self.x, other.x) && abs_diff_eq!(self.y, other.y)
+impl PartialEq for CameraRay {
+    fn eq(&self, other: &Self) -> bool {
+        let angle = self.vector.angle(&other.vector);
+        println!("angle: {}, eps: {}", angle, f64::EPSILON.sqrt());
+        angle < f64::EPSILON.sqrt()
     }
 }
+impl Eq for CameraRay {}
 
-impl<T: RelativeEq + Copy + AbsDiffEq> RelativeEq for CameraRay<T> {
-    fn default_max_relative() -> Self::Epsilon {
-        T::default_max_relative()
+impl CameraRay {
+    pub fn new(x: f64, y: f64, z: f64) -> Self {
+        Self {
+            vector: Vector3::new(x, y, z),
+        }
     }
-    fn relative_eq(&self, other: &Self, _: T::Epsilon, _: T::Epsilon) -> bool {
-        return relative_eq!(self.x, other.x) && relative_eq!(self.y, other.y);
-    }
-}
-impl<T: num_traits::One + Clone + Copy + RelativeEq> CameraRay<T> {
-    pub fn new(x: T, y: T) -> Self {
-        Self { x, y }
-    }
-    pub fn x(&self) -> T {
-        self.x
-    }
-    pub fn y(&self) -> T {
-        self.y
-    }
-    pub fn z(&self) -> T {
-        T::one()
-    }
-    pub fn xy(&self) -> (T, T) {
-        (self.x(), self.y())
-    }
-    pub fn xyz(&self) -> (T, T, T) {
-        (self.x(), self.y(), self.z())
-    }
-    pub fn as_vector(&self) -> Vector3<T> {
-        Vector3::new(self.x, self.y, self.z())
+    pub fn xy(&self) -> (f64, f64) {
+        (self.vector.x, self.vector.y)
     }
 }
 
@@ -74,8 +67,8 @@ pub struct CameraModel<T, V> {
 }
 impl<T, V> CameraModel<T, V>
 where
-    T: CameraProjection<f64>,
-    V: CameraDistortion<f64>,
+    T: CameraProjection,
+    V: CameraDistortion,
 {
     pub fn new(projection: T, distortion: V) -> Self {
         Self {
@@ -89,7 +82,7 @@ where
     pub fn projection(&self) -> &T {
         &self.projection
     }
-    pub fn project<U: Into<CameraRay<f64>>>(&self, ray: U) -> PixelIndex<f64> {
+    pub fn project<U: Into<CameraRay>>(&self, ray: U) -> PixelIndex<f64> {
         let ray = ray.into();
         let distorted = self.distortion().distort(&ray);
         self.projection().project(&distorted)
@@ -98,16 +91,16 @@ where
 
 pub struct Camera<T, V>
 where
-    T: CameraProjection<f64>,
-    V: CameraDistortion<f64>,
+    T: CameraProjection,
+    V: CameraDistortion,
 {
     model: CameraModel<T, V>,
     view: Isometry3<f64>,
 }
 impl<T, V> Camera<T, V>
 where
-    T: CameraProjection<f64>,
-    V: CameraDistortion<f64>,
+    T: CameraProjection,
+    V: CameraDistortion,
 {
     pub fn new(model: CameraModel<T, V>, view: Isometry3<f64>) -> Self {
         Self { model, view }
